@@ -326,15 +326,27 @@
           })
         });
 
-        const result = await response.json();
+        // Safely check if the response is valid JSON
+        const contentType = response.headers.get("content-type");
+        let result;
+        if (contentType && contentType.includes("application/json")) {
+          result = await response.json();
+        } else {
+          // If Vercel crashes and returns an HTML error page, catch it here
+          const rawText = await response.text();
+          throw new Error(`Server Error (${response.status}): ${rawText.slice(0, 80)}... Check Vercel Logs for details.`);
+        }
+
         if (!response.ok) throw new Error(result.error || "Submission failed");
 
         showStatus("✅ Your request and evidence have been queued successfully!", "var(--green)");
         
         // Reset form inputs
         document.getElementById("content").value = "";
-        document.getElementById("video_file").value = "";
-        updateFileName(document.getElementById("video_file"));
+        if (document.getElementById("video_file")) {
+            document.getElementById("video_file").value = "";
+            updateFileName(document.getElementById("video_file"));
+        }
 
       } catch (err) {
         console.error(err);
@@ -356,3 +368,4 @@
   </script>
 </body>
 </html>
+
