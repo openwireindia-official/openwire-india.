@@ -4,8 +4,8 @@ on:
   repository_dispatch:
     types: [process_news_request]
   schedule:
-    - cron: '*/30 * * * *' # Fallback check every 30 minutes for pending requests
-  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
 
 jobs:
   render-and-upload:
@@ -20,14 +20,15 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install System Dependencies (FFmpeg)
+      - name: Install System Dependencies (FFmpeg & Node.js)
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg nodejs
 
       - name: Install Python Packages
         run: |
-          pip install requests edge-tts mutagen pillow g4f yt-dlp supabase google-api-python-client google-auth-oauthlib google-auth-httplib2
+          pip install --upgrade yt-dlp
+          pip install requests edge-tts mutagen pillow g4f supabase google-api-python-client google-auth-oauthlib google-auth-httplib2
 
       - name: Restore YouTube OAuth Credentials
         env:
