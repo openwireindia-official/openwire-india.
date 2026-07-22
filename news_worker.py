@@ -128,14 +128,20 @@ def download_video_assets(request_data, search_query):
                 if chunk: f.write(chunk)
         return True
 
-    # 2. Text Topic Request: Scrape matching news clips
+        # 2. Text Topic Request: Scrape matching news clips
     print(f"🔍 Searching YouTube clips for query: '{search_query}'...")
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': os.path.join(CLIPS_DIR, '%(id)s.%(ext)s'),
         'quiet': True,
-        'match_filter': yt_dlp.utils.match_filter_func("duration < 600") 
+        'match_filter': yt_dlp.utils.match_filter_func("duration < 600"),
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios']
+            }
+        }
     }
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([f"ytsearch2:{search_query} news ground reality 1080p"])
