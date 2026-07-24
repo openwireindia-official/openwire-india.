@@ -1,0 +1,9 @@
+edge-tts
+mutagen
+Pillow
+supabase
+python-dotenv
+google-genai
+google-api-python-client
+google-auth
+requests
