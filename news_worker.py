@@ -5,7 +5,7 @@ import json
 import random
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import requests
 import edge_tts
 from mutagen.mp3 import MP3
@@ -20,7 +20,6 @@ from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 
 # --- DYNAMIC PATH & DIRECTORY CONFIGURATION ---
-# Uses the repository directory dynamically instead of hardcoded Termux paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "videos")
 DOWNLOADS_DIR = os.path.join(OUTPUT_DIR, "tmp_clips")
@@ -509,7 +508,26 @@ def process_unclustered_requests():
             print(f"⚠️ Clustering error: {e}")
 
 if __name__ == "__main__":
-    print("📡 OpenWire GitHub Action Worker Executing Batch...")
+    print("📡 OpenWire GitHub Action Worker Executing...")
+    
+    # 1. ALWAYS execute clustering logic to group new requests (Runs every 15 mins)
     process_unclustered_requests()
-    process_renders()
+    
+    # 2. Convert current UTC time in GitHub Actions to IST (UTC +5:30)
+    ist_offset = timedelta(hours=5, minutes=30)
+    now_ist = datetime.now(timezone.utc) + ist_offset
+    
+    print(f"🕒 Current IST Time: {now_ist.strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # Define Target Publishing Hours (5 AM, 10 AM, 3 PM, 8 PM)
+    target_upload_hours = [5, 10, 15, 20]
+    
+    # Check if the current IST hour matches a target hour AND it's within the first 15 mins of that hour
+    if now_ist.hour in target_upload_hours and now_ist.minute < 15:
+        print(f"🎯 Scheduled render window reached ({now_ist.hour}:00 IST). Initiating renders...")
+        process_renders()
+    else:
+        print("⏳ Outside of scheduled upload windows (5am, 10am, 3pm, 8pm). Rendering paused. Only clustering performed.")
+        
     print("✅ Worker Batch Execution Complete.")
+                     
