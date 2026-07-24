@@ -3,7 +3,7 @@ name: OpenWire News Worker
 on:
   schedule:
     # Runs automatically every 15 minutes
-    - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch: # Allows manual trigger anytime from GitHub UI
 
 jobs:
