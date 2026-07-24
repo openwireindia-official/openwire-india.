@@ -5,7 +5,7 @@ import json
 import random
 import asyncio
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 import requests
 import edge_tts
 from mutagen.mp3 import MP3
@@ -495,13 +495,24 @@ def process_unclustered_requests():
             if result.get("action") == "EXISTING" and result.get("cluster_id"):
                 c_id = result["cluster_id"]
                 supabase.table("news_requests").update({"cluster_id": c_id}).eq("id", req["id"]).execute()
+                
+                # If existing cluster has no GDrive ID but this request does, update the cluster
+                if gdrive_id:
+                    supabase.table("topic_clusters").update({"gdrive_raw_file_id": gdrive_id}).eq("id", c_id).is_("gdrive_raw_file_id", "null").execute()
+                    
             else:
                 new_topic_name = result.get("cluster_name", req["content"][:30])
-                new_c = supabase.table("topic_clusters").insert({
+                
+                # Build payload with or without gdrive_id
+                insert_payload = {
                     "cluster_name": new_topic_name,
                     "request_count": 1,
                     "status": "pending"
-                }).select().execute().data[0]
+                }
+                if gdrive_id:
+                    insert_payload["gdrive_raw_file_id"] = gdrive_id
+                    
+                new_c = supabase.table("topic_clusters").insert(insert_payload).select().execute().data[0]
                 supabase.table("news_requests").update({"cluster_id": new_c["id"]}).eq("id", req["id"]).execute()
                 active_clusters.append(new_c)
         except Exception as e:
@@ -510,24 +521,11 @@ def process_unclustered_requests():
 if __name__ == "__main__":
     print("📡 OpenWire GitHub Action Worker Executing...")
     
-    # 1. ALWAYS execute clustering logic to group new requests (Runs every 15 mins)
+    # 1. Group new requests and map GDrive IDs properly
     process_unclustered_requests()
     
-    # 2. Convert current UTC time in GitHub Actions to IST (UTC +5:30)
-    ist_offset = timedelta(hours=5, minutes=30)
-    now_ist = datetime.now(timezone.utc) + ist_offset
-    
-    print(f"🕒 Current IST Time: {now_ist.strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    # Define Target Publishing Hours (5 AM, 10 AM, 3 PM, 8 PM)
-    target_upload_hours = [5, 10, 15, 22]
-    
-    # Check if the current IST hour matches a target hour AND it's within the first 15 mins of that hour
-    if now_ist.hour in target_upload_hours and now_ist.minute < 15:
-        print(f"🎯 Scheduled render window reached ({now_ist.hour}:00 IST). Initiating renders...")
-        process_renders()
-    else:
-        print("⏳ Outside of scheduled upload windows (5am, 10am, 3pm, 8pm). Rendering paused. Only clustering performed.")
+    # 2. Immediately start rendering process (No more time gates!)
+    print("🎯 Initiating rendering process...")
+    process_renders()
         
     print("✅ Worker Batch Execution Complete.")
-                     
