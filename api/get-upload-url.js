@@ -17,18 +17,16 @@ export default async function handler(req, res) {
     const uniqueId = Math.random().toString(36).substring(2, 9);
     const sanitizedFileName = `${today}_${Date.now()}_${uniqueId}_${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
-    // 2. Authenticate using your OAuth2 credentials
+    // 2. Authenticate using OAuth2 credentials
     const oauth2Client = new google.auth.OAuth2(
       process.env.GDRIVE_CLIENT_ID,
       process.env.GDRIVE_CLIENT_SECRET
     );
 
-    // Set the refresh token so it can generate a fresh access token on the fly
     oauth2Client.setCredentials({
       refresh_token: process.env.GDRIVE_REFRESH_TOKEN,
     });
 
-    // Force token refresh to get a usable access token
     const { token } = await oauth2Client.getAccessToken();
 
     if (!token) {
@@ -40,12 +38,14 @@ export default async function handler(req, res) {
       name: sanitizedFileName,
     };
 
-    // Only attach parents folder if environment variable is set in Vercel
     if (process.env.GOOGLE_DRIVE_FOLDER_ID) {
       fileMetadata.parents = [process.env.GOOGLE_DRIVE_FOLDER_ID];
     }
 
-    // 4. Initiate direct Resumable Upload Session with Google Drive API
+    // 4. Get the domain requesting the upload URL (e.g. https://openwire-india.vercel.app)
+    const clientOrigin = req.headers.origin || `https://${req.headers.host}`;
+
+    // 5. Initiate Resumable Upload Session with Google Drive API & pass the Origin header
     const driveResponse = await fetch(
       'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
       {
@@ -54,6 +54,7 @@ export default async function handler(req, res) {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json; charset=UTF-8',
           'X-Upload-Content-Type': fileType || 'video/mp4',
+          'Origin': clientOrigin // <-- THIS ALLOWS THE BROWSER TO UPLOAD DIRECTLY TO GOOGLE
         },
         body: JSON.stringify(fileMetadata),
       }
@@ -64,7 +65,7 @@ export default async function handler(req, res) {
       throw new Error(`Google Drive API Error: ${errText}`);
     }
 
-    // 5. Retrieve the direct upload URI from the Location header
+    // 6. Retrieve direct upload URI from Location header
     const uploadUrl = driveResponse.headers.get('location');
 
     return res.status(200).json({
