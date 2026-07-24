@@ -1,10 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-import { crypto } from 'crypto';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+    import { google } from 'googleapis';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -18,34 +12,61 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Filename is required' });
     }
 
-    // 1. Generate organized path: evidence/YYYY-MM-DD/timestamp_uniqueID_cleanFilename
+    // 1. Sanitize file name and add timestamps
     const today = new Date().toISOString().split('T')[0];
     const uniqueId = Math.random().toString(36).substring(2, 9);
-    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
-    
-    // Path inside bucket: evidence/2026-07-22/1721640000_a1b2c3d_video.mp4
-    const storagePath = `evidence/${today}/${Date.now()}_${uniqueId}_${sanitizedFileName}`;
+    const sanitizedFileName = `${today}_${Date.now()}_${uniqueId}_${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
-    // 2. Create signed upload URL from Supabase (valid for 10 minutes)
-    const { data, error } = await supabase.storage
-      .from('evidence-videos')
-      .createSignedUploadUrl(storagePath);
+    // 2. Authenticate using your EXISTING OAuth2 credentials
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GDRIVE_CLIENT_ID,
+      process.env.GDRIVE_CLIENT_SECRET
+    );
 
-    if (error) throw error;
+    // Set the refresh token so it can generate a fresh access token on the fly
+    oauth2Client.setCredentials({
+      refresh_token: process.env.GDRIVE_REFRESH_TOKEN,
+    });
 
-    // 3. Get the public/permanent URL for DB reference later
-    const { data: urlData } = supabase.storage
-      .from('evidence-videos')
-      .getPublicUrl(storagePath);
+    // Force token refresh to get a usable access token
+    const { token } = await oauth2Client.getAccessToken();
+
+    if (!token) {
+      throw new Error("Failed to retrieve access token using Refresh Token.");
+    }
+
+    // 3. Initiate direct Resumable Upload Session with Google Drive API
+    const driveResponse = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json; charset=UTF-8',
+          'X-Upload-Content-Type': fileType || 'video/mp4',
+        },
+        body: JSON.stringify({
+          name: sanitizedFileName,
+          parents: [process.env.GOOGLE_DRIVE_FOLDER_ID], // Keeps your Drive clean
+        }),
+      }
+    );
+
+    if (!driveResponse.ok) {
+      const errText = await driveResponse.text();
+      throw new Error(`Google Drive API Error: ${errText}`);
+    }
+
+    // 4. Retrieve the direct upload URI from the Location header
+    const uploadUrl = driveResponse.headers.get('location');
 
     return res.status(200).json({
-      signedUrl: data.signedUrl,
-      path: data.path,
-      publicUrl: urlData.publicUrl
+      uploadUrl: uploadUrl,
+      fileName: sanitizedFileName,
     });
 
   } catch (error) {
-    console.error('Error generating signed URL:', error);
+    console.error('Error creating Google Drive session:', error);
     return res.status(500).json({ error: error.message || 'Server error' });
   }
 }
