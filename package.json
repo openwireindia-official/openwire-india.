@@ -2,6 +2,8 @@
   "name": "openwire-india",
   "version": "1.0.0",
   "dependencies": {
-    "@supabase/supabase-js": "^2.40.0"
+    "googleapis": "^140.0.0",
+    "@supabase/supabase-js": "^2.39.0"
   }
 }
+
