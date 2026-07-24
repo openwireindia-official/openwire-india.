@@ -277,7 +277,7 @@
       let finalVideoUrl = null;
 
       try {
-        // STEP 1: Handle Video Upload via Presigned URL if "raw_video" is selected
+        // STEP 1: Handle Video Upload via Google Drive Resumable Upload URL
         if (type === "raw_video") {
           const fileInput = document.getElementById("video_file");
           const file = fileInput.files[0];
@@ -288,7 +288,7 @@
 
           btn.innerText = "Preparing secure upload...";
 
-          // 1A. Request signed upload URL from backend API
+          // 1A. Request direct upload URL from backend API
           const urlRes = await fetch('/api/get-upload-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -298,19 +298,22 @@
           const urlData = await urlRes.json();
           if (!urlRes.ok) throw new Error(urlData.error || "Failed to generate upload URL.");
 
-          btn.innerText = "Uploading video directly to storage...";
+          btn.innerText = "Uploading video directly to secure storage...";
 
-          // 1B. Upload video binary file directly to Supabase Bucket
-          const uploadRes = await fetch(urlData.signedUrl, {
+          // 1B. Upload video binary directly to Google Drive URL
+          const uploadRes = await fetch(urlData.uploadUrl, {
             method: 'PUT',
-            headers: { 'Content-Type': file.type },
+            headers: { 'Content-Type': file.type || 'video/mp4' },
             body: file
           });
 
-          if (!uploadRes.ok) throw new Error("Failed to upload video file to storage.");
+          if (!uploadRes.ok) throw new Error("Failed to upload video file.");
 
-          // Capture the permanent organized public URL
-          finalVideoUrl = urlData.publicUrl;
+          // Google Drive returns file metadata (including ID) upon success
+          const driveFile = await uploadRes.json();
+
+          // Pass ONLY the File ID to your database so your Python worker can read it easily
+          finalVideoUrl = driveFile.id; 
         }
 
         btn.innerText = "Submitting request...";
@@ -368,4 +371,3 @@
   </script>
 </body>
 </html>
-
