@@ -520,7 +520,7 @@ if __name__ == "__main__":
     print(f"🕒 Current IST Time: {now_ist.strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Define Target Publishing Hours (5 AM, 10 AM, 3 PM, 8 PM)
-    target_upload_hours = [5, 10, 15, 20]
+    target_upload_hours = [5, 10, 15, 22]
     
     # Check if the current IST hour matches a target hour AND it's within the first 15 mins of that hour
     if now_ist.hour in target_upload_hours and now_ist.minute < 15:
