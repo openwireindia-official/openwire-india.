@@ -42,4 +42,4 @@ jobs:
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
         run: |
           python news_worker.py
-          
+        
