@@ -13,9 +13,10 @@ from PIL import Image, ImageDraw, ImageFont
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# --- GOOGLE SDKs ---
-from google import genai
-from google.genai import types
+# --- OPENAI SDK ---
+from openai import OpenAI
+
+# --- GOOGLE DRIVE SDKs ---
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 
@@ -45,7 +46,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 IG_ACCESS_TOKEN = os.getenv("IG_ACCESS_TOKEN")
 IG_USER_ID = os.getenv("IG_USER_ID")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "X9z62cFEWZnEYQKqiRsqWvVToRNjFRx0ASNg02ZyHGtbOEjrcBaxHsW3")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Google Drive Credentials
 GDRIVE_REFRESH_TOKEN = os.getenv("GDRIVE_REFRESH_TOKEN")
@@ -56,8 +57,12 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     print("❌ Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing!")
     sys.exit(1)
 
+if not OPENAI_API_KEY:
+    print("❌ Error: OPENAI_API_KEY missing!")
+    sys.exit(1)
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 INDIA_VOICE = "en-IN-PrabhatNeural"
 MAX_DAILY_UPLOADS = 25
@@ -312,11 +317,10 @@ def process_renders():
 
         supabase.table("topic_clusters").update({"status": "processing"}).eq("id", c_id).execute()
 
-        print(f"[1/7] Browsing live web to research: '{c_name}'...")
+        print(f"[1/7] Researching & generating script for: '{c_name}'...")
         research_prompt = f"""
         You are an investigative news editor for OpenWire India. 
-        Search the web for breaking updates regarding: "{c_name}".
-        Write an engaging, fast-paced 50-second news narration script.
+        Write an engaging, fast-paced breaking news narration script regarding: "{c_name}".
         RULES:
         - Must be written in smooth Hinglish (Hindi written in Roman script mixed with English).
         - Must take ~50 seconds when spoken steadily (approx. 110 to 130 words).
@@ -327,12 +331,15 @@ def process_renders():
         
         script_content = ""
         try:
-            response = gemini_client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=research_prompt,
-                config=types.GenerateContentConfig(tools=[{"google_search": {}}], temperature=0.7)
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You are an investigative news editor for OpenWire India."},
+                    {"role": "user", "content": research_prompt}
+                ],
+                temperature=0.7
             )
-            script_content = response.text.strip()
+            script_content = response.choices[0].message.content.strip()
         except Exception as e:
             print(f"❌ Script generation failed: {e}")
             supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
@@ -352,7 +359,7 @@ def process_renders():
 
         2. Create 10 to 12 fast-paced sequential visual keywords for stock video search.
 
-        Return STRICT RAW JSON only (no markdown):
+        Return STRICT RAW JSON matching this structure:
         {{
           "overlay": {{
              "tag": "WATCH",
@@ -368,9 +375,15 @@ def process_renders():
 
         mapping_data = None
         try:
-            res = gemini_client.models.generate_content(model='gemini-2.5-flash', contents=mapping_prompt)
-            clean_json = res.text.replace("```json", "").replace("```", "").strip()
-            mapping_data = json.loads(clean_json)
+            res = openai_client.chat.completions.create(
+                model="gpt-4o",
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": "You are a news graphics editor outputting JSON."},
+                    {"role": "user", "content": mapping_prompt}
+                ]
+            )
+            mapping_data = json.loads(res.choices[0].message.content)
         except Exception as e:
             print(f"❌ JSON Mapping failed: {e}")
             supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
@@ -484,11 +497,23 @@ def process_unclustered_requests():
         Determine if this submission matches an existing topic cluster or requires a new one.
         User Submission: "{req['content']}"
         Existing Open Clusters: {cluster_info if active_clusters else "None"}
-        Return STRICT RAW JSON: {{"action": "EXISTING" or "NEW", "cluster_id": "UUID or null", "cluster_name": "topic title if NEW, else null"}}
+        Return STRICT JSON:
+        {{
+          "action": "EXISTING" or "NEW",
+          "cluster_id": "UUID string or null",
+          "cluster_name": "topic title if NEW, else null"
+        }}
         """
         try:
-            res = gemini_client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-            result = json.loads(res.text.replace("```json", "").replace("```", "").strip())
+            res = openai_client.chat.completions.create(
+                model="gpt-4o",
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": "You are a topic clustering assistant outputting raw JSON."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            result = json.loads(res.choices[0].message.content)
             
             gdrive_id = req.get("gdrive_raw_file_id")
 
