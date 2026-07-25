@@ -5,7 +5,10 @@ import json
 import random
 import asyncio
 import time
-from datetime import datetime
+import re
+import io
+import socket
+from datetime import datetime, timedelta
 import requests
 import edge_tts
 from mutagen.mp3 import MP3
@@ -13,18 +16,22 @@ from PIL import Image, ImageDraw, ImageFont
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# --- GOOGLE SDKs ---
-from google import genai
-from google.genai import types
+# --- AI & GOOGLE SDKs ---
+import g4f
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
+from googleapiclient.http import MediaIoBaseDownload
 
-# --- DYNAMIC PATH & DIRECTORY CONFIGURATION ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_DIR = os.path.join(BASE_DIR, "videos")
-DOWNLOADS_DIR = os.path.join(OUTPUT_DIR, "tmp_clips")
-GDRIVE_TMP_DIR = os.path.join(OUTPUT_DIR, "gdrive_raw")
-MUSIC_DIR = os.path.join(BASE_DIR, "music")
+# Force Python to wait up to 5 minutes before timing out network connections
+socket.setdefaulttimeout(300)
+
+# --- PATH & DIRECTORY CONFIGURATION ---
+# Uses GITHUB_WORKSPACE environment variable, defaulting to current directory
+BASE_DIR = os.getenv("GITHUB_WORKSPACE", os.path.dirname(os.path.abspath(__file__)))
+OUTPUT_DIR = os.path.join(BASE_DIR, "videos/")
+DOWNLOADS_DIR = os.path.join(OUTPUT_DIR, "tmp_clips/")
+GDRIVE_TMP_DIR = os.path.join(OUTPUT_DIR, "gdrive_raw/")
+MUSIC_DIR = os.path.join(BASE_DIR, "music/")
 
 VOICEOVER_FILE = os.path.join(OUTPUT_DIR, "news_voiceover.mp3")
 OVERLAY_FILE = os.path.join(OUTPUT_DIR, "news_overlay.png")
@@ -37,17 +44,17 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 os.makedirs(GDRIVE_TMP_DIR, exist_ok=True)
 os.makedirs(MUSIC_DIR, exist_ok=True)
 
-# Load environment variables
-load_dotenv()
+# Environment variables
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+load_dotenv(ENV_PATH if os.path.exists(ENV_PATH) else None)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 IG_ACCESS_TOKEN = os.getenv("IG_ACCESS_TOKEN")
 IG_USER_ID = os.getenv("IG_USER_ID")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "X9z62cFEWZnEYQKqiRsqWvVToRNjFRx0ASNg02ZyHGtbOEjrcBaxHsW3")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# Google Drive Credentials
+# Google Drive Credentials for Long-Term Authentication
 GDRIVE_REFRESH_TOKEN = os.getenv("GDRIVE_REFRESH_TOKEN")
 GDRIVE_CLIENT_ID = os.getenv("GDRIVE_CLIENT_ID")
 GDRIVE_CLIENT_SECRET = os.getenv("GDRIVE_CLIENT_SECRET")
@@ -57,12 +64,12 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     sys.exit(1)
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+g4f_client = g4f.client.Client()
 
 INDIA_VOICE = "en-IN-PrabhatNeural"
 MAX_DAILY_UPLOADS = 25
 
-# --- RATE LIMITER (25 UPLOADS / 24 HOURS) ---
+# --- RATE LIMITER ---
 def check_and_update_rate_limit():
     now = time.time()
     data = {"count": 0, "reset_time": now + 86400}
@@ -84,7 +91,7 @@ def check_and_update_rate_limit():
         remaining_sec = int(data["reset_time"] - now)
         hours, remainder = divmod(remaining_sec, 3600)
         minutes, _ = divmod(remainder, 60)
-        print(f"⏳ Rate limit reached (25/25 uploads). All tasks paused. Resume in {hours}h {minutes}m.")
+        print(f"⏳ Rate limit reached. Tasks paused. Resume in {hours}h {minutes}m.")
         return False
 
     return True
@@ -97,7 +104,6 @@ def increment_upload_counter():
                 data = json.load(f)
         except Exception:
             pass
-
     if data["count"] == 0:
         data["reset_time"] = time.time() + 86400
 
@@ -109,7 +115,7 @@ def increment_upload_counter():
 # --- GOOGLE DRIVE INTEGRATION ---
 def get_gdrive_service():
     if not all([GDRIVE_REFRESH_TOKEN, GDRIVE_CLIENT_ID, GDRIVE_CLIENT_SECRET]):
-        print("⚠️ Google Drive credentials incomplete in environment variables!")
+        print("⚠️ Google Drive credentials incomplete in .env!")
         return None
         
     creds = Credentials(
@@ -125,15 +131,23 @@ def download_raw_video_from_gdrive(file_id, output_path):
     print(f"📥 Downloading raw clip from Google Drive (ID: {file_id})...")
     service = get_gdrive_service()
     if not service:
-        print("⚠️ Google Drive service credentials missing!")
         return False
     try:
         request = service.files().get_media(fileId=file_id)
-        with open(output_path, 'wb') as f:
-            f.write(request.execute())
+        fh = io.FileIO(output_path, 'wb')
+        
+        # Reduced chunk size and added chunk retry to prevent timeouts on mobile connections
+        downloader = MediaIoBaseDownload(fh, request, chunksize=512*1024)
+        
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk(num_retries=5)
+            if status:
+                print(f"   Downloading... {int(status.progress() * 100)}%", end="\r")
+        print("\n✅ Download complete!")
         return True
     except Exception as e:
-        print(f"❌ Failed to download from Google Drive: {e}")
+        print(f"\n❌ Failed to download from Google Drive: {e}")
         return False
 
 def delete_processed_file_from_gdrive(file_id):
@@ -150,7 +164,6 @@ def delete_processed_file_from_gdrive(file_id):
 # --- DYNAMIC PIL GRAPHICS OVERLAY GENERATOR ---
 def create_dynamic_overlay(overlay_data, output_path, width=1080, height=1920):
     print("🎨 Rendering custom dynamic overlay image...")
-    
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
@@ -217,7 +230,6 @@ def upload_to_uguu(file_path):
 def publish_to_instagram(video_url, caption):
     if not IG_ACCESS_TOKEN or not IG_USER_ID:
         return None
-
     print("🚀 Publishing video URL to Instagram API...")
     container_url = f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media"
     payload = {"media_type": "REELS", "video_url": video_url, "caption": caption, "access_token": IG_ACCESS_TOKEN}
@@ -296,11 +308,9 @@ def process_renders():
         return
 
     clusters = supabase.table("topic_clusters").select("*").eq("status", "pending").execute().data
-    if not clusters:
-        print("ℹ️ No pending topic clusters to render.")
-        return
+    if not clusters: return
 
-    print(f"\n🎬 Processing {len(clusters)} distinct topics.")
+    print(f"\n🎬 Action Render Triggered: Processing {len(clusters)} distinct topics.")
 
     for cluster in clusters:
         if not check_and_update_rate_limit():
@@ -316,23 +326,37 @@ def process_renders():
         research_prompt = f"""
         You are an investigative news editor for OpenWire India. 
         Search the web for breaking updates regarding: "{c_name}".
-        Write an engaging, fast-paced 50-second news narration script.
+        Write an engaging, fast-paced news narration script.
         RULES:
+        - ABSOLUTE MAXIMUM 75 WORDS. If you exceed 75 words you will fail.
+        - Must take EXACTLY 45 seconds when spoken steadily.
         - Must be written in smooth Hinglish (Hindi written in Roman script mixed with English).
-        - Must take ~50 seconds when spoken steadily (approx. 110 to 130 words).
         - Direct hook in the first line.
-        - Ends with "OpenWire India."
-        - Output ONLY the spoken narration.
+        - Ends EXACTLY with the phrase "OpenWire India." and nothing else.
+        - NO URLs, NO links, NO asterisks, NO markdown, NO sources, NO extra text. 
+        - OUTPUT STRICTLY THE SPOKEN NARRATION ONLY.
         """
         
         script_content = ""
         try:
-            response = gemini_client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=research_prompt,
-                config=types.GenerateContentConfig(tools=[{"google_search": {}}], temperature=0.7)
+            response = g4f_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": research_prompt}]
             )
-            script_content = response.text.strip()
+            script_content = response.choices[0].message.content.strip()
+            
+            # --- AI RUBBISH FIX: Sanitize the output to remove URLs and anything after the sign-off ---
+            script_content = re.sub(r'http\S+', '', script_content) # Strip links
+            script_content = script_content.replace('www.', '').replace('.com', '') # Strip obvious web addresses
+            
+            # Slice off anything that the AI hallucinates after the sign-off
+            if "OpenWire India." in script_content:
+                script_content = script_content.split("OpenWire India.")[0] + "OpenWire India."
+            elif "OpenWire India" in script_content:
+                script_content = script_content.split("OpenWire India")[0] + "OpenWire India."
+                
+            script_content = script_content.strip()
+
         except Exception as e:
             print(f"❌ Script generation failed: {e}")
             supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
@@ -368,9 +392,14 @@ def process_renders():
 
         mapping_data = None
         try:
-            res = gemini_client.models.generate_content(model='gemini-2.0-flash', contents=mapping_prompt)
-            clean_json = res.text.replace("```json", "").replace("```", "").strip()
-            mapping_data = json.loads(clean_json)
+            res = g4f_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": mapping_prompt}]
+            )
+            raw_content = res.choices[0].message.content.strip()
+            json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
+            clean_json = json_match.group(0) if json_match else raw_content.replace("```json", "").replace("```", "").strip()
+            mapping_data = json.loads(clean_json, strict=False)
         except Exception as e:
             print(f"❌ JSON Mapping failed: {e}")
             supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
@@ -379,21 +408,29 @@ def process_renders():
         print("[3/7] Rendering voiceover & poster image overlay...")
         create_dynamic_overlay(mapping_data["overlay"], OVERLAY_FILE)
         asyncio.run(generate_voiceover(script_content, VOICEOVER_FILE))
-        audio_dur = MP3(VOICEOVER_FILE).info.length
+        
+        raw_audio_dur = MP3(VOICEOVER_FILE).info.length
+        # HARD CAP AT 50 SECONDS to prevent giant files
+        target_duration = min(raw_audio_dur, 50.0)
+        print(f"⏱️ Voiceover duration: {raw_audio_dur:.2f}s (Hard capped video length to {target_duration:.2f}s)")
 
         print("[4/7] Downloading footage clips...")
         downloaded_clips = []
+        has_raw_video = False
         
         if raw_gdrive_id:
             raw_local_path = os.path.join(GDRIVE_TMP_DIR, f"user_raw_{c_id}.mp4")
             if download_raw_video_from_gdrive(raw_gdrive_id, raw_local_path):
                 downloaded_clips.append(raw_local_path)
+                has_raw_video = True
 
-        keywords = mapping_data.get("keywords", ["news street", "crowd", "city"])
-        for idx, kw in enumerate(keywords):
-            clip = download_pexels_video(kw, idx)
-            if clip:
-                downloaded_clips.append(clip)
+        # Only download Pexels if no raw video was provided
+        if not has_raw_video:
+            keywords = mapping_data.get("keywords", ["news street", "crowd", "city"])
+            for idx, kw in enumerate(keywords):
+                clip = download_pexels_video(kw, idx)
+                if clip:
+                    downloaded_clips.append(clip)
 
         if not downloaded_clips:
             print("❌ No background footage available. Skipping.")
@@ -405,7 +442,7 @@ def process_renders():
         filter_nodes = ""
         fade_dur = 0.4
         num_clips = len(downloaded_clips)
-        dur_per_clip = audio_dur / num_clips
+        dur_per_clip = target_duration / num_clips
         extract_dur = dur_per_clip + fade_dur
 
         for i, clip_path in enumerate(downloaded_clips):
@@ -413,7 +450,7 @@ def process_renders():
             filter_nodes += f"[{i}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p[v{i}];"
 
         overlay_idx = num_clips
-        inputs.append(f"-loop 1 -t {audio_dur} -i '{OVERLAY_FILE}'")
+        inputs.append(f"-loop 1 -t {target_duration} -i '{OVERLAY_FILE}'")
 
         vo_idx = num_clips + 1
         inputs.append(f"-i '{VOICEOVER_FILE}'")
@@ -443,7 +480,8 @@ def process_renders():
         filter_nodes += f"[vo_clean][bg_ducked]amix=inputs=2:duration=first[audio_mixed]"
 
         input_str = " ".join(inputs)
-        cmd = f"ffmpeg -y {input_str} -filter_complex \"{filter_nodes}\" -map '[final_video]' -map '[audio_mixed]' -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -t {audio_dur} '{FINAL_OUTPUT}' -loglevel error"
+   # Added -crf 28 to compress file size for faster Uguu.se uploading
+        cmd = f"ffmpeg -y {input_str} -filter_complex \"{filter_nodes}\" -map '[final_video]' -map '[audio_mixed]' -c:v libx264 -crf 28 -preset ultrafast -pix_fmt yuv420p -c:a aac -t {target_duration} '{FINAL_OUTPUT}' -loglevel error"
 
         if os.system(cmd) != 0:
             print("❌ FFmpeg layout engine error.")
@@ -462,18 +500,18 @@ def process_renders():
                 supabase.table("topic_clusters").update({"status": "published"}).eq("id", c_id).execute()
                 supabase.table("news_requests").update({"status": "published"}).eq("cluster_id", c_id).execute()
                 increment_upload_counter()
+                # Deletes from GDrive ONLY if successful
+                clear_temporary_build_files(gdrive_file_id=raw_gdrive_id)
             else:
                 supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
+                clear_temporary_build_files() # Don't delete from GDrive if failed
         else:
             supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
-
-        clear_temporary_build_files(gdrive_file_id=raw_gdrive_id)
+            clear_temporary_build_files() # Don't delete from GDrive if failed
 
 def process_unclustered_requests():
     unclustered = supabase.table("news_requests").select("*").eq("status", "pending").is_("cluster_id", "null").execute().data
-    if not unclustered:
-        print("ℹ️ No unclustered requests found.")
-        return
+    if not unclustered: return
 
     print(f"\n🧠 Found {len(unclustered)} raw submissions. Grouping topics...")
     active_clusters = supabase.table("topic_clusters").select("*").eq("status", "pending").execute().data
@@ -487,45 +525,51 @@ def process_unclustered_requests():
         Return STRICT RAW JSON: {{"action": "EXISTING" or "NEW", "cluster_id": "UUID or null", "cluster_name": "topic title if NEW, else null"}}
         """
         try:
-            res = gemini_client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
-            result = json.loads(res.text.replace("```json", "").replace("```", "").strip())
+            res = g4f_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            raw_content = res.choices[0].message.content.strip()
+            json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
+            clean_json = json_match.group(0) if json_match else raw_content.replace("```json", "").replace("```", "").strip()
+            result = json.loads(clean_json, strict=False)
             
-            gdrive_id = req.get("gdrive_raw_file_id")
+            # Fetch from 'video_url' column in news_requests
+            gdrive_id = req.get("video_url")
 
             if result.get("action") == "EXISTING" and result.get("cluster_id"):
                 c_id = result["cluster_id"]
                 supabase.table("news_requests").update({"cluster_id": c_id}).eq("id", req["id"]).execute()
                 
-                # If existing cluster has no GDrive ID but this request does, update the cluster
+                # Pass gdrive_id to existing cluster if available
                 if gdrive_id:
-                    supabase.table("topic_clusters").update({"gdrive_raw_file_id": gdrive_id}).eq("id", c_id).is_("gdrive_raw_file_id", "null").execute()
-                    
+                    supabase.table("topic_clusters").update({"gdrive_raw_file_id": gdrive_id}).eq("id", c_id).execute()
             else:
                 new_topic_name = result.get("cluster_name", req["content"][:30])
-                
-                # Build payload with or without gdrive_id
-                insert_payload = {
+                new_c = supabase.table("topic_clusters").insert({
                     "cluster_name": new_topic_name,
                     "request_count": 1,
-                    "status": "pending"
-                }
-                if gdrive_id:
-                    insert_payload["gdrive_raw_file_id"] = gdrive_id
-                    
-                new_c = supabase.table("topic_clusters").insert(insert_payload).select().execute().data[0]
+                    "status": "pending",
+                    "gdrive_raw_file_id": gdrive_id # Pass gdrive_id to new cluster
+                }).select().execute().data[0]
                 supabase.table("news_requests").update({"cluster_id": new_c["id"]}).eq("id", req["id"]).execute()
                 active_clusters.append(new_c)
         except Exception as e:
             print(f"⚠️ Clustering error: {e}")
 
 if __name__ == "__main__":
-    print("📡 OpenWire GitHub Action Worker Executing...")
-    
-    # 1. Group new requests and map GDrive IDs properly
-    process_unclustered_requests()
-    
-    # 2. Immediately start rendering process (No more time gates!)
-    print("🎯 Initiating rendering process...")
-    process_renders()
+    print("📡 OpenWire Worker Started (GitHub Actions Mode)...")
+    try:
+        # Run unclustered requests grouping once
+        process_unclustered_requests()
         
-    print("✅ Worker Batch Execution Complete.")
+        # Check for pending tasks and run renderer if any exist
+        pending = supabase.table("topic_clusters").select("id").eq("status", "pending").execute().data
+        if pending: 
+            process_renders()
+        else:
+            print("✅ No pending renders found. Exiting cleanly.")
+            
+    except Exception as e:
+        print(f"⚠️ Worker Error: {e}")
+        sys.exit(1)
