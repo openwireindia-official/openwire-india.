@@ -1,10 +1,7 @@
 name: OpenWire News Worker
 
 on:
-  schedule:
-    # Runs automatically every 6 hours exactly at 12 AM, 6 AM, 12 PM, and 6 PM IST
-    - cron: '43 0,6,12,18 * * *'
-  workflow_dispatch: # Allows manual trigger anytime from GitHub UI
+  workflow_dispatch: # Allows manual trigger via API script (trigger.py) or GitHub UI
 
 jobs:
   run-worker:
@@ -42,4 +39,4 @@ jobs:
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
         run: |
           python news_worker.py
-        
+          
