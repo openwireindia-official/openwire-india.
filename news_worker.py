@@ -75,7 +75,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 llm_client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Target Gemini Model
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.5-flash"
 
 INDIA_VOICE = "en-IN-PrabhatNeural"
 MAX_DAILY_UPLOADS = 25
