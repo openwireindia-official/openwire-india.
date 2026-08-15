@@ -28,6 +28,7 @@ jobs:
 
       - name: Execute OpenWire Worker
         env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
