@@ -1,10 +1,11 @@
+google-genai
+supabase
+requests
 edge-tts
 mutagen
 Pillow
-supabase
-python-dotenv
 google-api-python-client
-google-auth
-requests
-g4f
+google-auth-httplib2
+google-auth-oauthlib
+python-dotenv
 
