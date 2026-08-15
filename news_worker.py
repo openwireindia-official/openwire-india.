@@ -18,7 +18,7 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 
 # --- AI & GOOGLE SDKs ---
-import g4f
+from openai import OpenAI
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaIoBaseDownload
@@ -27,7 +27,6 @@ from googleapiclient.http import MediaIoBaseDownload
 socket.setdefaulttimeout(300)
 
 # --- PATH & DIRECTORY CONFIGURATION ---
-# Uses GITHUB_WORKSPACE environment variable, defaulting to current directory
 BASE_DIR = os.getenv("GITHUB_WORKSPACE", os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR = os.path.join(BASE_DIR, "videos/")
 DOWNLOADS_DIR = os.path.join(OUTPUT_DIR, "tmp_clips/")
@@ -54,6 +53,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 IG_ACCESS_TOKEN = os.getenv("IG_ACCESS_TOKEN")
 IG_USER_ID = os.getenv("IG_USER_ID")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "X9z62cFEWZnEYQKqiRsqWvVToRNjFRx0ASNg02ZyHGtbOEjrcBaxHsW3")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # Google Drive Credentials for Long-Term Authentication
 GDRIVE_REFRESH_TOKEN = os.getenv("GDRIVE_REFRESH_TOKEN")
@@ -64,8 +64,19 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     print("❌ Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing!")
     sys.exit(1)
 
+if not OPENROUTER_API_KEY:
+    print("❌ Error: OPENROUTER_API_KEY missing in .env!")
+    sys.exit(1)
+
+# Initialize Supabase and OpenRouter clients
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-g4f_client = g4f.client.Client()
+llm_client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=OPENROUTER_API_KEY,
+)
+
+# Target Gemini Model
+GEMINI_MODEL = "google/gemini-flash-latest"
 
 INDIA_VOICE = "en-IN-PrabhatNeural"
 MAX_DAILY_UPLOADS = 25
@@ -137,7 +148,6 @@ def download_raw_video_from_gdrive(file_id, output_path):
         request = service.files().get_media(fileId=file_id)
         fh = io.FileIO(output_path, 'wb')
         
-        # Reduced chunk size and added chunk retry to prevent timeouts on mobile connections
         downloader = MediaIoBaseDownload(fh, request, chunksize=512*1024)
         
         done = False
@@ -216,7 +226,6 @@ def create_dynamic_overlay(overlay_data, output_path, width=1080, height=1920):
 def upload_to_uguu(file_path):
     print("📤 Uploading video to Uguu.se for Meta Reel ingestion...")
     
-    # Strategy 1: System curl (Fixes Python socket write timeout on GitHub Actions)
     for attempt in range(1, 4):
         try:
             print(f"   [Attempt {attempt}/3] Uploading via native curl...")
@@ -239,7 +248,6 @@ def upload_to_uguu(file_path):
             print(f"   ⚠️ curl attempt {attempt} failed: {e}")
             time.sleep(3)
 
-    # Strategy 2: Python requests with Browser User-Agent header (Backup attempt)
     try:
         print("   [Fallback] Uploading via Python requests with Chrome headers...")
         headers = {
@@ -250,7 +258,7 @@ def upload_to_uguu(file_path):
                 "https://uguu.se/upload.php",
                 files={"files[]": f},
                 headers=headers,
-                timeout=(30, 120)  # (Connect timeout, Read timeout)
+                timeout=(30, 120)
             )
         data = res.json()
         if data.get("success") and len(data.get("files", [])) > 0:
@@ -376,17 +384,15 @@ def process_renders():
         
         script_content = ""
         try:
-            response = g4f_client.chat.completions.create(
-                model="gpt-4o",
+            response = llm_client.chat.completions.create(
+                model=GEMINI_MODEL,
                 messages=[{"role": "user", "content": research_prompt}]
             )
             script_content = response.choices[0].message.content.strip()
             
-            # --- AI RUBBISH FIX: Sanitize the output to remove URLs and anything after the sign-off ---
-            script_content = re.sub(r'http\S+', '', script_content) # Strip links
-            script_content = script_content.replace('www.', '').replace('.com', '') # Strip obvious web addresses
+            script_content = re.sub(r'http\S+', '', script_content) 
+            script_content = script_content.replace('www.', '').replace('.com', '') 
             
-            # Slice off anything that the AI hallucinates after the sign-off
             if "OpenWire India." in script_content:
                 script_content = script_content.split("OpenWire India.")[0] + "OpenWire India."
             elif "OpenWire India" in script_content:
@@ -429,8 +435,8 @@ def process_renders():
 
         mapping_data = None
         try:
-            res = g4f_client.chat.completions.create(
-                model="gpt-4o",
+            res = llm_client.chat.completions.create(
+                model=GEMINI_MODEL,
                 messages=[{"role": "user", "content": mapping_prompt}]
             )
             raw_content = res.choices[0].message.content.strip()
@@ -447,7 +453,6 @@ def process_renders():
         asyncio.run(generate_voiceover(script_content, VOICEOVER_FILE))
         
         raw_audio_dur = MP3(VOICEOVER_FILE).info.length
-        # HARD CAP AT 50 SECONDS to prevent giant files
         target_duration = min(raw_audio_dur, 50.0)
         print(f"⏱️ Voiceover duration: {raw_audio_dur:.2f}s (Hard capped video length to {target_duration:.2f}s)")
 
@@ -461,7 +466,6 @@ def process_renders():
                 downloaded_clips.append(raw_local_path)
                 has_raw_video = True
 
-        # Only download Pexels if no raw video was provided
         if not has_raw_video:
             keywords = mapping_data.get("keywords", ["news street", "crowd", "city"])
             for idx, kw in enumerate(keywords):
@@ -517,7 +521,6 @@ def process_renders():
         filter_nodes += f"[vo_clean][bg_ducked]amix=inputs=2:duration=first[audio_mixed]"
 
         input_str = " ".join(inputs)
-   # Added -crf 28 to compress file size for faster Uguu.se uploading
         cmd = f"ffmpeg -y {input_str} -filter_complex \"{filter_nodes}\" -map '[final_video]' -map '[audio_mixed]' -c:v libx264 -crf 28 -preset ultrafast -pix_fmt yuv420p -c:a aac -t {target_duration} '{FINAL_OUTPUT}' -loglevel error"
 
         if os.system(cmd) != 0:
@@ -537,14 +540,13 @@ def process_renders():
                 supabase.table("topic_clusters").update({"status": "published"}).eq("id", c_id).execute()
                 supabase.table("news_requests").update({"status": "published"}).eq("cluster_id", c_id).execute()
                 increment_upload_counter()
-                # Deletes from GDrive ONLY if successful
                 clear_temporary_build_files(gdrive_file_id=raw_gdrive_id)
             else:
                 supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
-                clear_temporary_build_files() # Don't delete from GDrive if failed
+                clear_temporary_build_files() 
         else:
             supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
-            clear_temporary_build_files() # Don't delete from GDrive if failed
+            clear_temporary_build_files() 
 
 def process_unclustered_requests():
     unclustered = supabase.table("news_requests").select("*").eq("status", "pending").is_("cluster_id", "null").execute().data
@@ -562,8 +564,8 @@ def process_unclustered_requests():
         Return STRICT RAW JSON: {{"action": "EXISTING" or "NEW", "cluster_id": "UUID or null", "cluster_name": "topic title if NEW, else null"}}
         """
         try:
-            res = g4f_client.chat.completions.create(
-                model="gpt-4o",
+            res = llm_client.chat.completions.create(
+                model=GEMINI_MODEL,
                 messages=[{"role": "user", "content": prompt}]
             )
             raw_content = res.choices[0].message.content.strip()
@@ -571,14 +573,12 @@ def process_unclustered_requests():
             clean_json = json_match.group(0) if json_match else raw_content.replace("```json", "").replace("```", "").strip()
             result = json.loads(clean_json, strict=False)
             
-            # Fetch from 'video_url' column in news_requests
             gdrive_id = req.get("video_url")
 
             if result.get("action") == "EXISTING" and result.get("cluster_id"):
                 c_id = result["cluster_id"]
                 supabase.table("news_requests").update({"cluster_id": c_id}).eq("id", req["id"]).execute()
                 
-                # Pass gdrive_id to existing cluster if available
                 if gdrive_id:
                     supabase.table("topic_clusters").update({"gdrive_raw_file_id": gdrive_id}).eq("id", c_id).execute()
             else:
@@ -587,7 +587,7 @@ def process_unclustered_requests():
                     "cluster_name": new_topic_name,
                     "request_count": 1,
                     "status": "pending",
-                    "gdrive_raw_file_id": gdrive_id # Pass gdrive_id to new cluster
+                    "gdrive_raw_file_id": gdrive_id 
                 }).select().execute().data[0]
                 supabase.table("news_requests").update({"cluster_id": new_c["id"]}).eq("id", req["id"]).execute()
                 active_clusters.append(new_c)
@@ -597,10 +597,8 @@ def process_unclustered_requests():
 if __name__ == "__main__":
     print("📡 OpenWire Worker Started (GitHub Actions Mode)...")
     try:
-        # Run unclustered requests grouping once
         process_unclustered_requests()
         
-        # Check for pending tasks and run renderer if any exist
         pending = supabase.table("topic_clusters").select("id").eq("status", "pending").execute().data
         if pending: 
             process_renders()
