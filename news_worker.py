@@ -18,7 +18,7 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 
 # --- AI & GOOGLE SDKs ---
-from openai import OpenAI
+from google import genai
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaIoBaseDownload
@@ -53,30 +53,29 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 IG_ACCESS_TOKEN = os.getenv("IG_ACCESS_TOKEN")
 IG_USER_ID = os.getenv("IG_USER_ID")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "X9z62cFEWZnEYQKqiRsqWvVToRNjFRx0ASNg02ZyHGtbOEjrcBaxHsW3")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # Google Drive Credentials for Long-Term Authentication
 GDRIVE_REFRESH_TOKEN = os.getenv("GDRIVE_REFRESH_TOKEN")
 GDRIVE_CLIENT_ID = os.getenv("GDRIVE_CLIENT_ID")
 GDRIVE_CLIENT_SECRET = os.getenv("GDRIVE_CLIENT_SECRET")
 
+# Native Gemini Setup
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 if not SUPABASE_URL or not SUPABASE_KEY:
     print("❌ Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing!")
     sys.exit(1)
 
-if not OPENROUTER_API_KEY:
-    print("❌ Error: OPENROUTER_API_KEY missing in .env!")
+if not GEMINI_API_KEY:
+    print("❌ Error: GEMINI_API_KEY missing in environment variables!")
     sys.exit(1)
 
-# Initialize Supabase and OpenRouter clients
+# Initialize Supabase and Gemini clients
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-llm_client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=OPENROUTER_API_KEY,
-)
+llm_client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Target Gemini Model
-GEMINI_MODEL = "google/gemini-flash-latest"
+GEMINI_MODEL = "gemini-2.0-flash"
 
 INDIA_VOICE = "en-IN-PrabhatNeural"
 MAX_DAILY_UPLOADS = 25
@@ -384,11 +383,11 @@ def process_renders():
         
         script_content = ""
         try:
-            response = llm_client.chat.completions.create(
+            response = llm_client.models.generate_content(
                 model=GEMINI_MODEL,
-                messages=[{"role": "user", "content": research_prompt}]
+                contents=research_prompt
             )
-            script_content = response.choices[0].message.content.strip()
+            script_content = response.text.strip()
             
             script_content = re.sub(r'http\S+', '', script_content) 
             script_content = script_content.replace('www.', '').replace('.com', '') 
@@ -435,11 +434,11 @@ def process_renders():
 
         mapping_data = None
         try:
-            res = llm_client.chat.completions.create(
+            res = llm_client.models.generate_content(
                 model=GEMINI_MODEL,
-                messages=[{"role": "user", "content": mapping_prompt}]
+                contents=mapping_prompt
             )
-            raw_content = res.choices[0].message.content.strip()
+            raw_content = res.text.strip()
             json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
             clean_json = json_match.group(0) if json_match else raw_content.replace("```json", "").replace("```", "").strip()
             mapping_data = json.loads(clean_json, strict=False)
@@ -564,11 +563,11 @@ def process_unclustered_requests():
         Return STRICT RAW JSON: {{"action": "EXISTING" or "NEW", "cluster_id": "UUID or null", "cluster_name": "topic title if NEW, else null"}}
         """
         try:
-            res = llm_client.chat.completions.create(
+            res = llm_client.models.generate_content(
                 model=GEMINI_MODEL,
-                messages=[{"role": "user", "content": prompt}]
+                contents=prompt
             )
-            raw_content = res.choices[0].message.content.strip()
+            raw_content = res.text.strip()
             json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
             clean_json = json_match.group(0) if json_match else raw_content.replace("```json", "").replace("```", "").strip()
             result = json.loads(clean_json, strict=False)
