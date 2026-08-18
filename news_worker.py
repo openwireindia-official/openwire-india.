@@ -17,8 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# --- AI & GOOGLE SDKs ---
-from google import genai
+# --- GOOGLE SDKs (DRIVE ONLY) ---
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaIoBaseDownload
@@ -59,23 +58,34 @@ GDRIVE_REFRESH_TOKEN = os.getenv("GDRIVE_REFRESH_TOKEN")
 GDRIVE_CLIENT_ID = os.getenv("GDRIVE_CLIENT_ID")
 GDRIVE_CLIENT_SECRET = os.getenv("GDRIVE_CLIENT_SECRET")
 
-# Native Gemini Setup
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# --- OPENROUTER API SETUP ---
+OPENROUTER_API_KEY = "PASTE_YOUR_OPENROUTER_API_KEY_HERE"
+OPENROUTER_MODEL = "google/gemini-2.0-flash-001"
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     print("❌ Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing!")
     sys.exit(1)
 
-if not GEMINI_API_KEY:
-    print("❌ Error: GEMINI_API_KEY missing in environment variables!")
+if not OPENROUTER_API_KEY or OPENROUTER_API_KEY == "PASTE_YOUR_OPENROUTER_API_KEY_HERE":
+    print("❌ Error: OPENROUTER_API_KEY missing or not configured in script!")
     sys.exit(1)
 
-# Initialize Supabase and Gemini clients
+# Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-llm_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Target Gemini Model
-GEMINI_MODEL = "gemini-3.5-flash"
+def call_openrouter(prompt):
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [{"role": "user", "content": prompt}]
+    }
+    res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=60)
+    res.raise_for_status()
+    data = res.json()
+    return data["choices"][0]["message"]["content"]
 
 INDIA_VOICE = "en-IN-PrabhatNeural"
 MAX_DAILY_UPLOADS = 25
@@ -383,11 +393,7 @@ def process_renders():
         
         script_content = ""
         try:
-            response = llm_client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=research_prompt
-            )
-            script_content = response.text.strip()
+            script_content = call_openrouter(research_prompt).strip()
             
             script_content = re.sub(r'http\S+', '', script_content) 
             script_content = script_content.replace('www.', '').replace('.com', '') 
@@ -434,11 +440,7 @@ def process_renders():
 
         mapping_data = None
         try:
-            res = llm_client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=mapping_prompt
-            )
-            raw_content = res.text.strip()
+            raw_content = call_openrouter(mapping_prompt).strip()
             json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
             clean_json = json_match.group(0) if json_match else raw_content.replace("```json", "").replace("```", "").strip()
             mapping_data = json.loads(clean_json, strict=False)
@@ -563,11 +565,7 @@ def process_unclustered_requests():
         Return STRICT RAW JSON: {{"action": "EXISTING" or "NEW", "cluster_id": "UUID or null", "cluster_name": "topic title if NEW, else null"}}
         """
         try:
-            res = llm_client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt
-            )
-            raw_content = res.text.strip()
+            raw_content = call_openrouter(prompt).strip()
             json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
             clean_json = json_match.group(0) if json_match else raw_content.replace("```json", "").replace("```", "").strip()
             result = json.loads(clean_json, strict=False)
