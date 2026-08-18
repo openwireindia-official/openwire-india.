@@ -60,7 +60,8 @@ GDRIVE_CLIENT_SECRET = os.getenv("GDRIVE_CLIENT_SECRET")
 
 # --- OPENROUTER API SETUP ---
 OPENROUTER_API_KEY = "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"
-OPENROUTER_MODEL = "google/gemini-2.0-flash-001"
+# Updated to the current active Gemini Flash model on OpenRouter
+OPENROUTER_MODEL = "google/gemini-3.5-flash"
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     print("❌ Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing!")
