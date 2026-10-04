@@ -3,46 +3,22 @@ import sys
 import subprocess
 import glob
 import json
-import random
-import asyncio
 import time
 import re
-import io
-import socket
-from datetime import datetime, timedelta
 import requests
-import edge_tts
-from mutagen.mp3 import MP3
-from PIL import Image, ImageDraw, ImageFont
+import mimetypes
+from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from supabase import create_client, Client
 from dotenv import load_dotenv
-
-# --- AI & GOOGLE SDKs ---
 from google import genai
-from googleapiclient.discovery import build
-from google.oauth2.credentials import Credentials
-from googleapiclient.http import MediaIoBaseDownload
-
-# Force Python to wait up to 5 minutes before timing out network connections
-socket.setdefaulttimeout(300)
 
 # --- PATH & DIRECTORY CONFIGURATION ---
 BASE_DIR = os.getenv("GITHUB_WORKSPACE", os.path.dirname(os.path.abspath(__file__)))
-OUTPUT_DIR = os.path.join(BASE_DIR, "videos/")
-DOWNLOADS_DIR = os.path.join(OUTPUT_DIR, "tmp_clips/")
-GDRIVE_TMP_DIR = os.path.join(OUTPUT_DIR, "gdrive_raw/")
-MUSIC_DIR = os.path.join(BASE_DIR, "music/")
+TEMP_DIR = os.path.join(BASE_DIR, "temp_builds/")
+FONT_PATH = os.path.join(BASE_DIR, "Arial Bold.ttf") # Ensure this font is in your repo
 
-VOICEOVER_FILE = os.path.join(OUTPUT_DIR, "news_voiceover.mp3")
-OVERLAY_FILE = os.path.join(OUTPUT_DIR, "news_overlay.png")
-FINAL_OUTPUT = os.path.join(OUTPUT_DIR, "FINAL_NEWS_VIDEO.mp4")
-FONT_PATH = os.path.join(BASE_DIR, "Arial Bold.ttf")
-RATE_LIMIT_FILE = os.path.join(BASE_DIR, "upload_rate_limit.json")
-
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(DOWNLOADS_DIR, exist_ok=True)
-os.makedirs(GDRIVE_TMP_DIR, exist_ok=True)
-os.makedirs(MUSIC_DIR, exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 # Environment variables
 ENV_PATH = os.path.join(BASE_DIR, ".env")
@@ -52,558 +28,324 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 IG_ACCESS_TOKEN = os.getenv("IG_ACCESS_TOKEN")
 IG_USER_ID = os.getenv("IG_USER_ID")
-PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "X9z62cFEWZnEYQKqiRsqWvVToRNjFRx0ASNg02ZyHGtbOEjrcBaxHsW3")
-
-# Google Drive Credentials for Long-Term Authentication
-GDRIVE_REFRESH_TOKEN = os.getenv("GDRIVE_REFRESH_TOKEN")
-GDRIVE_CLIENT_ID = os.getenv("GDRIVE_CLIENT_ID")
-GDRIVE_CLIENT_SECRET = os.getenv("GDRIVE_CLIENT_SECRET")
-
-# Native Gemini Setup
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing!")
+if not all([SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY, IG_ACCESS_TOKEN, IG_USER_ID]):
+    print("❌ Error: Missing critical environment variables!")
     sys.exit(1)
 
-if not GEMINI_API_KEY:
-    print("❌ Error: GEMINI_API_KEY missing in environment variables!")
-    sys.exit(1)
-
-# Initialize Supabase and Gemini clients
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 llm_client = genai.Client(api_key=GEMINI_API_KEY)
-
-# Target Gemini Model
 GEMINI_MODEL = "gemini-3.5-flash"
 
-INDIA_VOICE = "en-IN-PrabhatNeural"
-MAX_DAILY_UPLOADS = 25
 
-# --- RATE LIMITER ---
-def check_and_update_rate_limit():
-    now = time.time()
-    data = {"count": 0, "reset_time": now + 86400}
+# ==========================================
+# 1. AI EDITORIAL DESK (GEMINI)
+# ==========================================
+def run_ai_triage():
+    """Scans pending raw reports, uses Gemini to format them and assigns risk status."""
+    print("\n🕵️‍♂️ Scanning for pending citizen reports...")
+    pending_reports = supabase.table("citizen_reports").select("*").eq("status", "pending").execute().data
     
-    if os.path.exists(RATE_LIMIT_FILE):
-        try:
-            with open(RATE_LIMIT_FILE, "r") as f:
-                data = json.load(f)
-        except Exception:
-            pass
-
-    if now >= data.get("reset_time", 0):
-        data["count"] = 0
-        data["reset_time"] = now + 86400
-        with open(RATE_LIMIT_FILE, "w") as f:
-            json.dump(data, f)
-
-    if data["count"] >= MAX_DAILY_UPLOADS:
-        remaining_sec = int(data["reset_time"] - now)
-        hours, remainder = divmod(remaining_sec, 3600)
-        minutes, _ = divmod(remainder, 60)
-        print(f"⏳ Rate limit reached. Tasks paused. Resume in {hours}h {minutes}m.")
-        return False
-
-    return True
-
-def increment_upload_counter():
-    data = {"count": 0, "reset_time": time.time() + 86400}
-    if os.path.exists(RATE_LIMIT_FILE):
-        try:
-            with open(RATE_LIMIT_FILE, "r") as f:
-                data = json.load(f)
-        except Exception:
-            pass
-    if data["count"] == 0:
-        data["reset_time"] = time.time() + 86400
-
-    data["count"] += 1
-    with open(RATE_LIMIT_FILE, "w") as f:
-        json.dump(data, f)
-    print(f"📊 Daily Upload Count: {data['count']}/{MAX_DAILY_UPLOADS}")
-
-# --- GOOGLE DRIVE INTEGRATION ---
-def get_gdrive_service():
-    if not all([GDRIVE_REFRESH_TOKEN, GDRIVE_CLIENT_ID, GDRIVE_CLIENT_SECRET]):
-        print("⚠️ Google Drive credentials incomplete in .env!")
-        return None
-        
-    creds = Credentials(
-        token=None,
-        refresh_token=GDRIVE_REFRESH_TOKEN,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=GDRIVE_CLIENT_ID,
-        client_secret=GDRIVE_CLIENT_SECRET
-    )
-    return build('drive', 'v3', credentials=creds)
-
-def download_raw_video_from_gdrive(file_id, output_path):
-    print(f"📥 Downloading raw clip from Google Drive (ID: {file_id})...")
-    service = get_gdrive_service()
-    if not service:
-        return False
-    try:
-        request = service.files().get_media(fileId=file_id)
-        fh = io.FileIO(output_path, 'wb')
-        
-        downloader = MediaIoBaseDownload(fh, request, chunksize=512*1024)
-        
-        done = False
-        while done is False:
-            status, done = downloader.next_chunk(num_retries=5)
-            if status:
-                print(f"   Downloading... {int(status.progress() * 100)}%", end="\r")
-        print("\n✅ Download complete!")
-        return True
-    except Exception as e:
-        print(f"\n❌ Failed to download from Google Drive: {e}")
-        return False
-
-def delete_processed_file_from_gdrive(file_id):
-    print(f"🗑️ Deleting processed video from Google Drive (ID: {file_id})...")
-    service = get_gdrive_service()
-    if not service:
+    if not pending_reports:
+        print("   No pending reports found.")
         return
-    try:
-        service.files().delete(fileId=file_id).execute()
-        print(f"✅ Successfully deleted Google Drive file {file_id}")
-    except Exception as e:
-        print(f"⚠️ Google Drive deletion notice: {e}")
 
-# --- DYNAMIC PIL GRAPHICS OVERLAY GENERATOR ---
-def create_dynamic_overlay(overlay_data, output_path, width=1080, height=1920):
-    print("🎨 Rendering custom dynamic overlay image...")
+    for report in pending_reports:
+        r_id = report["id"]
+        raw_text = report.get("raw_text", "")
+        
+        prompt = f"""
+        You are the Chief Editor for OpenWire Dhubri. Review this raw citizen submission:
+        "{raw_text}"
+
+        1. FORMATTING: Rewrite this into a strict, neutral maximum 60-word news brief. No sensationalism.
+        2. TRIAGE RISK:
+           - GREEN: Mundane civic issues (potholes, weather, local sports, campus events).
+           - YELLOW: Mentions local businesses, minor disputes, or unverified claims.
+           - RED: Hate speech, defamation, severe accusations, or explicit content.
+
+        Return STRICT RAW JSON ONLY:
+        {{
+          "headline": "Max 8 words",
+          "dateline": "Specific location mentioned",
+          "body": "The 60-word professional news summary",
+          "risk_status": "GREEN"
+        }}
+        """
+        
+        try:
+            res = llm_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+            raw_res = res.text.strip()
+            json_match = re.search(r'\{.*\}', raw_res, re.DOTALL)
+            clean_json = json_match.group(0) if json_match else raw_res.replace("```json", "").replace("```", "").strip()
+            editorial = json.loads(clean_json, strict=False)
+            
+            new_status = "approved" if editorial.get("risk_status") == "GREEN" else "review"
+            if editorial.get("risk_status") == "RED": new_status = "rejected"
+
+            supabase.table("citizen_reports").update({
+                "headline": editorial.get("headline"),
+                "body": editorial.get("body"),
+                "dateline": editorial.get("dateline"),
+                "status": new_status
+            }).eq("id", r_id).execute()
+            
+            print(f"✅ Triage Complete [{new_status.upper()}]: {editorial.get('headline')}")
+            
+        except Exception as e:
+            print(f"❌ AI Triage failed for {r_id}: {e}")
+
+
+# ==========================================
+# 2. GRAPHICS ENGINE (PIL)
+# ==========================================
+def draw_wrapped_text(draw, text, font, max_width, x, y, fill):
+    """Helper to wrap text pixel-perfectly within the image."""
+    lines = []
+    words = text.split()
+    current_line = []
+    
+    for word in words:
+        test_line = " ".join(current_line + [word])
+        bbox = draw.textbbox((0, 0), test_line, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            current_line.append(word)
+        else:
+            lines.append(" ".join(current_line))
+            current_line = [word]
+    if current_line: lines.append(" ".join(current_line))
+    
+    current_y = y
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        draw.text((x, current_y), line, font=font, fill=fill)
+        current_y += bbox[3] - bbox[1] + 15 
+    return current_y
+
+def generate_transparent_overlay(headline, body, dateline, contributor, output_path):
+    """Generates a 1080x1920 transparent PNG with dark gradients and text."""
+    print("🎨 Generating Smart Graphics Overlay...")
+    width, height = 1080, 1920
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    gradient_start_y = int(height * 0.45)
-    for y in range(gradient_start_y, height):
-        alpha = int(235 * ((y - gradient_start_y) / (height - gradient_start_y)))
+    # Draw bottom readability gradient (Black fade)
+    grad_start = int(height * 0.40)
+    for y in range(grad_start, height):
+        alpha = int(240 * ((y - grad_start) / (height - grad_start))) # Max 94% opacity at bottom
+        draw.line([(0, y), (width, y)], fill=(0, 0, 0, alpha))
+        
+    # Draw top readability gradient (for dateline)
+    for y in range(0, 300):
+        alpha = int(180 * (1 - (y / 300)))
         draw.line([(0, y), (width, y)], fill=(0, 0, 0, alpha))
 
+    # Load Fonts (Fallback to default if missing)
     try:
-        font_small = ImageFont.truetype(FONT_PATH, 36)
-        font_main = ImageFont.truetype(FONT_PATH, 52)
-        font_sub = ImageFont.truetype(FONT_PATH, 38)
-        font_logo = ImageFont.truetype(FONT_PATH, 48)
-    except Exception:
-        font_small = font_main = font_sub = font_logo = ImageFont.load_default()
+        font_tag = ImageFont.truetype(FONT_PATH, 35)
+        font_head = ImageFont.truetype(FONT_PATH, 65)
+        font_body = ImageFont.truetype(FONT_PATH, 42)
+        font_badge = ImageFont.truetype(FONT_PATH, 38)
+    except:
+        font_tag = font_head = font_body = font_badge = ImageFont.load_default()
 
-    current_y = int(height * 0.62)
-
-    def draw_centered_text(text, font, fill, y_pos, bg_color=None):
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-        x_pos = (width - text_w) // 2
-        
-        if bg_color:
-            padding_x, padding_y = 20, 10
-            draw.rectangle(
-                [x_pos - padding_x, y_pos - padding_y, x_pos + text_w + padding_x, y_pos + text_h + padding_y],
-                fill=bg_color
-            )
-        draw.text((x_pos, y_pos), text, font=font, fill=fill)
-        return y_pos + text_h + 20
-
-    tag_text = overlay_data.get("tag", "BREAKING").upper()
-    main_highlight = overlay_data.get("main_highlight", "MAJOR NEWS UPDATE").upper()
-    main_sub = overlay_data.get("sub_text", "DEVELOPING STORY IN REAL TIME").upper()
-    caption_line = overlay_data.get("caption_line", "OpenWire India coverage")
-    brand_logo = overlay_data.get("brand", "truth.").lower()
-
-    current_y = draw_centered_text(tag_text, font_small, (255, 255, 255, 255), current_y)
-    current_y = draw_centered_text(main_highlight, font_main, (255, 255, 255, 255), current_y, bg_color=(180, 20, 20, 255))
-    current_y = draw_centered_text(main_sub, font_main, (255, 255, 255, 255), current_y)
-    current_y = draw_centered_text(caption_line, font_sub, (220, 220, 220, 255), current_y)
-    draw_centered_text(brand_logo, font_logo, (255, 255, 255, 255), current_y + 10)
+    # Draw Text Layout
+    margin = 80
+    max_text_width = width - (margin * 2)
+    
+    # Top Dateline
+    draw.text((margin, 80), f"📍 {dateline.upper()}", font=font_tag, fill=(255, 100, 100, 255))
+    
+    # Bottom Content Structure
+    current_y = int(height * 0.55)
+    
+    # Headline
+    current_y = draw_wrapped_text(draw, headline.upper(), font_head, max_text_width, margin, current_y, (255, 255, 255, 255))
+    current_y += 30 # Spacing
+    
+    # Body
+    current_y = draw_wrapped_text(draw, body, font_body, max_text_width, margin, current_y, (220, 220, 220, 255))
+    current_y += 50 # Spacing
+    
+    # Contributor Badge
+    credit_text = f"🎙️ REPORTED BY: {contributor.upper()}"
+    bbox = draw.textbbox((0, 0), credit_text, font=font_badge)
+    draw.rectangle([margin - 15, current_y - 15, margin + (bbox[2]-bbox[0]) + 15, current_y + (bbox[3]-bbox[1]) + 15], fill=(255, 153, 51, 255)) # Saffron background
+    draw.text((margin, current_y), credit_text, font=font_badge, fill=(255, 255, 255, 255))
 
     img.save(output_path, "PNG")
 
-# --- UGUU.SE EXCLUSIVE HOSTING ---
-def upload_to_uguu(file_path):
-    print("📤 Uploading video to Uguu.se for Meta Reel ingestion...")
+
+# ==========================================
+# 3. MEDIA PROCESSING (IMAGE & VIDEO)
+# ==========================================
+def process_media(input_media_url, overlay_png_path, output_path):
+    """Detects media type, downloads it, and composites the overlay."""
+    print("⚙️ Processing & Merging Raw Media...")
     
-    for attempt in range(1, 4):
-        try:
-            print(f"   [Attempt {attempt}/3] Uploading via native curl...")
-            cmd = [
-                "curl", "-s", "-X", "POST",
-                "https://uguu.se/upload.php",
-                "-F", f"files[]=@{file_path}",
-                "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                "--connect-timeout", "30",
-                "--max-time", "120"
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            data = json.loads(result.stdout)
+    # Download raw media
+    raw_ext = ".mp4" if "mp4" in input_media_url.lower() else ".jpg"
+    raw_path = os.path.join(TEMP_DIR, f"raw_input{raw_ext}")
+    
+    with requests.get(input_media_url, stream=True) as r:
+        r.raise_for_status()
+        with open(raw_path, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
+
+    is_video = raw_ext == ".mp4"
+
+    if is_video:
+        # FFmpeg: Center crop to 9:16, add overlay, encode to standard MP4, keep original audio
+        # Using aac for audio to ensure it's standard and plays well on Instagram
+        cmd = [
+            "ffmpeg", "-y", "-i", raw_path, "-i", overlay_png_path,
+            "-filter_complex", 
+            "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1[bg];[bg][1:v]overlay=0:0",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "192k", "-map", "0:a?", # map 0:a? grabs audio only if it exists
+            output_path
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return "VIDEO"
+    else:
+        # PIL: Center crop image and paste overlay
+        bg = Image.open(raw_path).convert("RGBA")
+        overlay = Image.open(overlay_png_path).convert("RGBA")
+        
+        # Calculate aspect fill crop (1080x1920)
+        target_ratio = 1080 / 1920
+        bg_ratio = bg.width / bg.height
+        
+        if bg_ratio > target_ratio: # Too wide
+            new_width = int(bg.height * target_ratio)
+            left = (bg.width - new_width) / 2
+            bg = bg.crop((left, 0, left + new_width, bg.height))
+        else: # Too tall
+            new_height = int(bg.width / target_ratio)
+            top = (bg.height - new_height) / 2
+            bg = bg.crop((0, top, bg.width, top + new_height))
             
-            if data.get("success") and len(data.get("files", [])) > 0:
-                url = data["files"][0]["url"]
-                print(f"✅ Uguu.se upload URL: {url}")
-                return url
-        except Exception as e:
-            print(f"   ⚠️ curl attempt {attempt} failed: {e}")
-            time.sleep(3)
+        bg = bg.resize((1080, 1920), Image.Resampling.LANCZOS)
+        bg.alpha_composite(overlay)
+        bg.convert("RGB").save(output_path, "JPEG", quality=95)
+        return "IMAGE"
 
-    try:
-        print("   [Fallback] Uploading via Python requests with Chrome headers...")
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        }
-        with open(file_path, "rb") as f:
-            res = requests.post(
-                "https://uguu.se/upload.php",
-                files={"files[]": f},
-                headers=headers,
-                timeout=(30, 120)
-            )
-        data = res.json()
-        if data.get("success") and len(data.get("files", [])) > 0:
-            url = data["files"][0]["url"]
-            print(f"✅ Uguu.se upload URL: {url}")
-            return url
-    except Exception as e:
-        print(f"   ⚠️ Python requests fallback failed: {e}")
 
-    print("❌ Uguu.se upload failed after all retry attempts.")
+# ==========================================
+# 4. HOSTING & DISTRIBUTION
+# ==========================================
+def host_on_supabase(local_file_path, filename):
+    """Uploads the rendered file to your Supabase storage to get a public URL for Instagram."""
+    print(f"☁️ Uploading {filename} to Supabase Storage...")
+    with open(local_file_path, "rb") as f:
+        # Note: Requires a public bucket named 'openwire_renders' in Supabase
+        res = supabase.storage.from_("openwire_renders").upload(filename, f, file_options={"upsert": "true"})
+        if res:
+            return f"{SUPABASE_URL}/storage/v1/object/public/openwire_renders/{filename}"
     return None
 
-# --- INSTAGRAM PUBLISHING ENGINE ---
-def publish_to_instagram(video_url, caption):
-    if not IG_ACCESS_TOKEN or not IG_USER_ID:
-        return None
-    print("🚀 Publishing video URL to Instagram API...")
+def publish_to_instagram(media_url, media_type, caption):
+    """Routes the public URL to either the IG Image or IG Reels endpoint."""
+    print("🚀 Publishing to Instagram Graph API...")
     container_url = f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media"
-    payload = {"media_type": "REELS", "video_url": video_url, "caption": caption, "access_token": IG_ACCESS_TOKEN}
     
+    if media_type == "VIDEO":
+        payload = {"media_type": "REELS", "video_url": media_url, "caption": caption, "access_token": IG_ACCESS_TOKEN}
+    else:
+        payload = {"image_url": media_url, "caption": caption, "access_token": IG_ACCESS_TOKEN}
+        
+    # 1. Create Container
     res = requests.post(container_url, data=payload).json()
     if "id" not in res:
-        print(f"❌ IG Container creation failed: {res}")
+        print(f"❌ IG Container failed: {res}")
         return None
-        
     creation_id = res["id"]
-    print("⏳ IG Container created. Waiting for Meta to finish processing...")
     
-    for _ in range(15): 
-        time.sleep(10)
-        status_res = requests.get(f"https://graph.facebook.com/v19.0/{creation_id}?fields=status_code&access_token={IG_ACCESS_TOKEN}").json()
-        status = status_res.get("status_code")
-        if status == "FINISHED":
-            break
-        elif status == "ERROR":
-            print("❌ Meta processing error.")
-            return None
+    # 2. Wait for processing (Crucial for Video)
+    if media_type == "VIDEO":
+        print("⏳ Waiting for Meta to process video...")
+        for _ in range(12): 
+            time.sleep(10)
+            status_res = requests.get(f"https://graph.facebook.com/v19.0/{creation_id}?fields=status_code&access_token={IG_ACCESS_TOKEN}").json()
+            if status_res.get("status_code") == "FINISHED": break
+            if status_res.get("status_code") == "ERROR": return None
 
+    # 3. Publish
     pub_res = requests.post(f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media_publish", data={"creation_id": creation_id, "access_token": IG_ACCESS_TOKEN}).json()
-    return pub_res.get("id")
-
-# --- PEXELS MULTI-CLIP FETCHING ---
-def download_pexels_video(keyword, index):
-    url = f"https://api.pexels.com/videos/search?query={keyword}&per_page=5&orientation=portrait"
-    headers = {"Authorization": PEXELS_API_KEY}
-    try:
-        res = requests.get(url, headers=headers, timeout=15).json()
-        if not res.get("videos"):
-            res = requests.get("https://api.pexels.com/videos/search?query=breaking+news+city&per_page=3&orientation=portrait", headers=headers).json()
-            
-        video_data = random.choice(res["videos"])
-        video_url = video_data.get("video_files", [{}])[0].get("link")
-        for f in video_data.get("video_files", []):
-            if f.get("quality") == "hd" and f.get("width", 0) >= 720:
-                video_url = f["link"]
-                break
-                
-        target_path = os.path.join(DOWNLOADS_DIR, f"clip_{index}.mp4")
-        v_res = requests.get(video_url, stream=True)
-        with open(target_path, "wb") as f:
-            for chunk in v_res.iter_content(chunk_size=1024*1024):
-                if chunk: f.write(chunk)
-        return target_path
-    except Exception as e:
-        print(f"⚠️ Pexels fetch error: {e}")
-        return None
-
-async def generate_voiceover(text, output_path):
-    communicate = edge_tts.Communicate(text, INDIA_VOICE, rate="+2%", pitch="-1Hz")
-    await communicate.save(output_path)
-
-def clear_temporary_build_files(gdrive_file_id=None):
-    print("🧹 Cleaning local temporary build files...")
-    if os.path.exists(VOICEOVER_FILE): os.remove(VOICEOVER_FILE)
-    if os.path.exists(OVERLAY_FILE): os.remove(OVERLAY_FILE)
-    if os.path.exists(FINAL_OUTPUT): os.remove(FINAL_OUTPUT)
+    media_id = pub_res.get("id")
     
-    for f in glob.glob(os.path.join(DOWNLOADS_DIR, "*")):
+    if media_id:
+        # 4. Get Permalink URL to send back to the user
+        link_res = requests.get(f"https://graph.facebook.com/v19.0/{media_id}?fields=permalink&access_token={IG_ACCESS_TOKEN}").json()
+        return link_res.get("permalink")
+    return None
+
+
+# ==========================================
+# 5. THE MAIN LOOP
+# ==========================================
+def cleanup_temp_files():
+    for f in glob.glob(os.path.join(TEMP_DIR, "*")):
         try: os.remove(f)
         except: pass
 
-    for f in glob.glob(os.path.join(GDRIVE_TMP_DIR, "*")):
-        try: os.remove(f)
-        except: pass
-
-    if gdrive_file_id:
-        delete_processed_file_from_gdrive(gdrive_file_id)
-
-# --- MAIN BATCH RENDERING ENGINE ---
-def process_renders():
-    if not check_and_update_rate_limit():
-        return
-
-    clusters = supabase.table("topic_clusters").select("*").eq("status", "pending").execute().data
-    if not clusters: return
-
-    print(f"\n🎬 Action Render Triggered: Processing {len(clusters)} distinct topics.")
-
-    for cluster in clusters:
-        if not check_and_update_rate_limit():
-            break
-
-        c_id = cluster["id"]
-        c_name = cluster['cluster_name']
-        raw_gdrive_id = cluster.get('gdrive_raw_file_id')
-
-        supabase.table("topic_clusters").update({"status": "processing"}).eq("id", c_id).execute()
-
-        print(f"[1/7] Browsing live web to research: '{c_name}'...")
-        research_prompt = f"""
-        You are an investigative news editor for OpenWire India. 
-        Search the web for breaking updates regarding: "{c_name}".
-        Write an engaging, fast-paced news narration script.
-        RULES:
-        - ABSOLUTE MAXIMUM 75 WORDS. If you exceed 75 words you will fail.
-        - Must take EXACTLY 45 seconds when spoken steadily.
-        - Must be written in smooth Hinglish (Hindi written in Roman script mixed with English).
-        - Direct hook in the first line.
-        - Ends EXACTLY with the phrase "OpenWire India." and nothing else.
-        - NO URLs, NO links, NO asterisks, NO markdown, NO sources, NO extra text. 
-        - OUTPUT STRICTLY THE SPOKEN NARRATION ONLY.
-        """
-        
-        script_content = ""
+def main():
+    print("🟢 OpenWire Smart Media Engine Started...")
+    
+    # 1. Run Triage on new raw submissions
+    run_ai_triage()
+    
+    # 2. Fetch approved articles ready for rendering
+    approved_reports = supabase.table("citizen_reports").select("*").eq("status", "approved").execute().data
+    
+    for report in approved_reports:
         try:
-            response = llm_client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=research_prompt
-            )
-            script_content = response.text.strip()
+            r_id = report["id"]
+            headline = report["headline"]
+            body = report["body"]
+            dateline = report["dateline"]
+            contributor = report["contributor_name"] or "Anonymous"
+            media_url = report["media_url"]
             
-            script_content = re.sub(r'http\S+', '', script_content) 
-            script_content = script_content.replace('www.', '').replace('.com', '') 
+            print(f"\n📰 Assembling News Card: {headline}")
             
-            if "OpenWire India." in script_content:
-                script_content = script_content.split("OpenWire India.")[0] + "OpenWire India."
-            elif "OpenWire India" in script_content:
-                script_content = script_content.split("OpenWire India")[0] + "OpenWire India."
-                
-            script_content = script_content.strip()
-
-        except Exception as e:
-            print(f"❌ Script generation failed: {e}")
-            supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
-            continue
-
-        print("[2/7] Generating Dynamic Screen Overlay Text and Multi-Clip Timeline Map...")
-        mapping_prompt = f"""
-        Based on this news narration:
-        "{script_content}"
-
-        1. Generate dynamic poster overlay headline text:
-           - "tag": Short 1-word tag
-           - "main_highlight": Max 4-5 words primary headline
-           - "sub_text": Max 5-6 words secondary line
-           - "caption_line": 1 descriptive short line
-           - "brand": "OpenWire."
-
-        2. Create 10 to 12 fast-paced sequential visual keywords for stock video search.
-
-        Return STRICT RAW JSON only (no markdown):
-        {{
-          "overlay": {{
-             "tag": "WATCH",
-             "main_highlight": "MAJOR PROTEST IN DELHI",
-             "sub_text": "POLICE BRACING FOR MARCH",
-             "caption_line": "Students demand immediate policy reform",
-             "brand": "OpenWire."
-          }},
-          "keywords": ["delhi street crowd", "police officers", "protest banner"],
-          "tags": ["#OpenWireIndia", "#News"]
-        }}
-        """
-
-        mapping_data = None
-        try:
-            res = llm_client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=mapping_prompt
-            )
-            raw_content = res.text.strip()
-            json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
-            clean_json = json_match.group(0) if json_match else raw_content.replace("```json", "").replace("```", "").strip()
-            mapping_data = json.loads(clean_json, strict=False)
-        except Exception as e:
-            print(f"❌ JSON Mapping failed: {e}")
-            supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
-            continue
-
-        print("[3/7] Rendering voiceover & poster image overlay...")
-        create_dynamic_overlay(mapping_data["overlay"], OVERLAY_FILE)
-        asyncio.run(generate_voiceover(script_content, VOICEOVER_FILE))
-        
-        raw_audio_dur = MP3(VOICEOVER_FILE).info.length
-        target_duration = min(raw_audio_dur, 50.0)
-        print(f"⏱️ Voiceover duration: {raw_audio_dur:.2f}s (Hard capped video length to {target_duration:.2f}s)")
-
-        print("[4/7] Downloading footage clips...")
-        downloaded_clips = []
-        has_raw_video = False
-        
-        if raw_gdrive_id:
-            raw_local_path = os.path.join(GDRIVE_TMP_DIR, f"user_raw_{c_id}.mp4")
-            if download_raw_video_from_gdrive(raw_gdrive_id, raw_local_path):
-                downloaded_clips.append(raw_local_path)
-                has_raw_video = True
-
-        if not has_raw_video:
-            keywords = mapping_data.get("keywords", ["news street", "crowd", "city"])
-            for idx, kw in enumerate(keywords):
-                clip = download_pexels_video(kw, idx)
-                if clip:
-                    downloaded_clips.append(clip)
-
-        if not downloaded_clips:
-            print("❌ No background footage available. Skipping.")
-            supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
-            continue
-
-        print("[5/7] Assembling video with FFmpeg Engine...")
-        inputs = []
-        filter_nodes = ""
-        fade_dur = 0.4
-        num_clips = len(downloaded_clips)
-        dur_per_clip = target_duration / num_clips
-        extract_dur = dur_per_clip + fade_dur
-
-        for i, clip_path in enumerate(downloaded_clips):
-            inputs.append(f"-stream_loop -1 -t {extract_dur} -i '{clip_path}'")
-            filter_nodes += f"[{i}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p[v{i}];"
-
-        overlay_idx = num_clips
-        inputs.append(f"-loop 1 -t {target_duration} -i '{OVERLAY_FILE}'")
-
-        vo_idx = num_clips + 1
-        inputs.append(f"-i '{VOICEOVER_FILE}'")
-
-        bg_idx = vo_idx + 1
-        music_files = glob.glob(os.path.join(MUSIC_DIR, "*.mp3"))
-        if music_files:
-            inputs.append(f"-stream_loop -1 -i '{random.choice(music_files)}'")
-        else:
-            inputs.append("-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100")
-
-        if num_clips > 1:
-            last_v = "[v0]"
-            current_t = dur_per_clip
-            for i in range(1, num_clips):
-                out_v = f"[v_xf{i}]" if i < num_clips - 1 else "[video_faded]"
-                filter_nodes += f"{last_v}[v{i}]xfade=transition=fade:duration={fade_dur}:offset={current_t}{out_v};"
-                last_v = out_v
-                current_t += dur_per_clip
-            final_bg = "[video_faded]"
-        else:
-            final_bg = "[v0]"
-
-        filter_nodes += f"{final_bg}[{overlay_idx}:v]overlay=0:0[final_video];"
-        filter_nodes += f"[{vo_idx}:a]volume=1.4[vo_clean];"
-        filter_nodes += f"[{bg_idx}:a]volume=0.08[bg_ducked];"
-        filter_nodes += f"[vo_clean][bg_ducked]amix=inputs=2:duration=first[audio_mixed]"
-
-        input_str = " ".join(inputs)
-        cmd = f"ffmpeg -y {input_str} -filter_complex \"{filter_nodes}\" -map '[final_video]' -map '[audio_mixed]' -c:v libx264 -crf 28 -preset ultrafast -pix_fmt yuv420p -c:a aac -t {target_duration} '{FINAL_OUTPUT}' -loglevel error"
-
-        if os.system(cmd) != 0:
-            print("❌ FFmpeg layout engine error.")
-            supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
-            continue
-
-        print("[6/7] Uploading to Uguu.se for Meta publishing...")
-        public_video_url = upload_to_uguu(FINAL_OUTPUT)
-
-        if public_video_url:
-            desc = f"{c_name}\n\n{' '.join(mapping_data.get('tags', ['#News', '#OpenWire']))}"
-            ig_post_id = publish_to_instagram(public_video_url, desc)
-
-            if ig_post_id:
-                print(f"🎉 Published to Instagram successfully! Post ID: {ig_post_id}")
-                supabase.table("topic_clusters").update({"status": "published"}).eq("id", c_id).execute()
-                supabase.table("news_requests").update({"status": "published"}).eq("cluster_id", c_id).execute()
-                increment_upload_counter()
-                clear_temporary_build_files(gdrive_file_id=raw_gdrive_id)
+            # Set up file paths
+            overlay_path = os.path.join(TEMP_DIR, "overlay.png")
+            
+            # Step A: Generate Overlay
+            generate_transparent_overlay(headline, body, dateline, contributor, overlay_path)
+            
+            # Step B: Merge Media
+            final_ext = ".mp4" if "mp4" in media_url.lower() else ".jpg"
+            final_path = os.path.join(TEMP_DIR, f"final_{r_id}{final_ext}")
+            media_type = process_media(media_url, overlay_path, final_path)
+            
+            # Step C: Host on Supabase
+            hosted_media_url = host_on_supabase(final_path, f"final_{r_id}{final_ext}")
+            if not hosted_media_url: raise Exception("Failed to host rendered media.")
+            
+            # Step D: Publish to Instagram
+            caption = f"{headline}\n\n{body}\n\n📍 {dateline}\n🎙️ Citizen Report by: {contributor}\n\n#OpenWireIndia #DhubriNews #CitizenJournalism"
+            ig_permalink = publish_to_instagram(hosted_media_url, media_type, caption)
+            
+            if ig_permalink:
+                print(f"🎉 Success! Live at: {ig_permalink}")
+                # Update DB to signal WhatsApp Bot that it's time to notify the user
+                supabase.table("citizen_reports").update({
+                    "status": "published",
+                    "published_url": ig_permalink
+                }).eq("id", r_id).execute()
             else:
-                supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
-                clear_temporary_build_files() 
-        else:
-            supabase.table("topic_clusters").update({"status": "failed"}).eq("id", c_id).execute()
-            clear_temporary_build_files() 
-
-def process_unclustered_requests():
-    unclustered = supabase.table("news_requests").select("*").eq("status", "pending").is_("cluster_id", "null").execute().data
-    if not unclustered: return
-
-    print(f"\n🧠 Found {len(unclustered)} raw submissions. Grouping topics...")
-    active_clusters = supabase.table("topic_clusters").select("*").eq("status", "pending").execute().data
-
-    for req in unclustered:
-        cluster_info = "\n".join([f"- ID: {c['id']} | Topic: {c['cluster_name']}" for c in active_clusters])
-        prompt = f"""
-        Determine if this submission matches an existing topic cluster or requires a new one.
-        User Submission: "{req['content']}"
-        Existing Open Clusters: {cluster_info if active_clusters else "None"}
-        Return STRICT RAW JSON: {{"action": "EXISTING" or "NEW", "cluster_id": "UUID or null", "cluster_name": "topic title if NEW, else null"}}
-        """
-        try:
-            res = llm_client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt
-            )
-            raw_content = res.text.strip()
-            json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
-            clean_json = json_match.group(0) if json_match else raw_content.replace("```json", "").replace("```", "").strip()
-            result = json.loads(clean_json, strict=False)
-            
-            gdrive_id = req.get("video_url")
-
-            if result.get("action") == "EXISTING" and result.get("cluster_id"):
-                c_id = result["cluster_id"]
-                supabase.table("news_requests").update({"cluster_id": c_id}).eq("id", req["id"]).execute()
+                raise Exception("Instagram API returned an error.")
                 
-                if gdrive_id:
-                    supabase.table("topic_clusters").update({"gdrive_raw_file_id": gdrive_id}).eq("id", c_id).execute()
-            else:
-                new_topic_name = result.get("cluster_name", req["content"][:30])
-                new_c = supabase.table("topic_clusters").insert({
-                    "cluster_name": new_topic_name,
-                    "request_count": 1,
-                    "status": "pending",
-                    "gdrive_raw_file_id": gdrive_id 
-                }).select().execute().data[0]
-                supabase.table("news_requests").update({"cluster_id": new_c["id"]}).eq("id", req["id"]).execute()
-                active_clusters.append(new_c)
         except Exception as e:
-            print(f"⚠️ Clustering error: {e}")
+            print(f"❌ Error processing report {r_id}: {e}")
+            supabase.table("citizen_reports").update({"status": "failed"}).eq("id", r_id).execute()
+            
+        finally:
+            cleanup_temp_files()
 
 if __name__ == "__main__":
-    print("📡 OpenWire Worker Started (GitHub Actions Mode)...")
-    try:
-        process_unclustered_requests()
-        
-        pending = supabase.table("topic_clusters").select("id").eq("status", "pending").execute().data
-        if pending: 
-            process_renders()
-        else:
-            print("✅ No pending renders found. Exiting cleanly.")
-            
-    except Exception as e:
-        print(f"⚠️ Worker Error: {e}")
-        sys.exit(1)
+    main()
+                                 
