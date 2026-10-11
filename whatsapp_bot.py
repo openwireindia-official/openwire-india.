@@ -32,7 +32,6 @@ app = FastAPI()
 USER_SESSIONS = {}
 
 # --- GOOGLE DRIVE HELPER ---
-p
 def get_gdrive_service():
     creds = Credentials(
         token=None,
