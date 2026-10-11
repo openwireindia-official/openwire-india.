@@ -89,54 +89,95 @@ def download_gdrive_file(file_id, output_path):
 
 # --- LOK PRESS GRAPHICS OVERLAY ---
 def create_lok_press_overlay(headline, location, contributor, output_path, width=1080, height=1920):
-    print("🎨 Rendering Lok Press overlay...")
+    print("🎨 Rendering Lok Lens Badge Overlay...")
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # Bottom gradient for text readability
+    # 1. Dark Gradient at Bottom for Headline Readability
     grad_start = int(height * 0.50)
     for y in range(grad_start, height):
         alpha = int(240 * ((y - grad_start) / (height - grad_start)))
         draw.line([(0, y), (width, y)], fill=(0, 0, 0, alpha))
 
+    # 2. Fonts Setup
     try:
-        font_alert = ImageFont.truetype(FONT_PATH, 40)
+        font_alert = ImageFont.truetype(FONT_PATH, 38)
         font_head = ImageFont.truetype(FONT_PATH, 55)
-        font_brand = ImageFont.truetype(FONT_PATH, 45)
-        font_meta = ImageFont.truetype(FONT_PATH, 35)
+        font_brand = ImageFont.truetype(FONT_PATH, 42)
+        font_meta = ImageFont.truetype(FONT_PATH, 34)
+        font_badge = ImageFont.truetype(FONT_PATH, 36)
     except:
-        font_alert = font_head = font_brand = font_meta = ImageFont.load_default()
+        font_alert = font_head = font_brand = font_meta = font_badge = ImageFont.load_default()
 
+    # =========================================================
+    # CENTERED TOP "LOK LENS" CAPSULE BADGE
+    # =========================================================
+    badge_text = f"👁  LOK LENS • {contributor.upper()}  ✔"
+    
+    bbox = draw.textbbox((0, 0), badge_text, font=font_badge)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    
+    padding_x = 45
+    padding_y = 22
+    box_w = text_w + (padding_x * 2)
+    box_h = text_h + (padding_y * 2)
+    
+    # Position: Centered horizontally near the top
+    x1 = (width - box_w) // 2
+    y1 = 90
+    x2 = x1 + box_w
+    y2 = y1 + box_h
+    
+    # Draw glossy/translucent white pill background with a soft border
+    draw.rounded_rectangle(
+        [x1, y1, x2, y2], 
+        radius=box_h // 2, 
+        fill=(255, 255, 255, 235),      # Translucent white
+        outline=(210, 215, 225, 255),   # Light silver-blue border
+        width=3
+    )
+    
+    # Draw badge text (Professional Blue Tone matching the reference)
+    text_x = x1 + padding_x
+    text_y = y1 + padding_y - 2
+    draw.text((text_x, text_y), badge_text, font=font_badge, fill=(13, 110, 253, 255))
+
+    # =========================================================
+    # LOWER-THIRD HEADLINE & BRANDING
+    # =========================================================
     def draw_centered_text(text, font, fill, y_pos, bg_color=None):
         bbox = draw.textbbox((0, 0), text, font=font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-        x_pos = (width - text_w) // 2
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        x_pos = (width - tw) // 2
         
         if bg_color:
-            pad_x, pad_y = 25, 15
-            draw.rectangle([x_pos - pad_x, y_pos - pad_y, x_pos + text_w + pad_x, y_pos + text_h + pad_y], fill=bg_color)
+            pad_x, pad_y = 25, 14
+            draw.rectangle([x_pos - pad_x, y_pos - pad_y, x_pos + tw + pad_x, y_pos + th + pad_y], fill=bg_color)
         draw.text((x_pos, y_pos), text, font=font, fill=fill)
-        return y_pos + text_h + 30
+        return y_pos + th + 30
 
-    # Layout matches the reference image structure
     current_y = int(height * 0.65)
-    
-    # 1. ALERT Tag
+
+    # ALERT Header
     current_y = draw_centered_text("ALERT", font_alert, (255, 255, 255, 255), current_y)
-    
-    # 2. Main Headline (Red Box)
-    current_y = draw_centered_text(headline.upper(), font_head, (255, 255, 255, 255), current_y, bg_color=(200, 30, 30, 255))
-    
-    # 3. Location & Brand
+
+    # Red News Headline Box
+    current_y = draw_centered_text(
+        headline.upper(), 
+        font_head, 
+        fill=(255, 255, 255, 255), 
+        y_pos=current_y, 
+        bg_color=(200, 30, 30, 255)
+    )
+
+    # Location & Brand
     current_y = draw_centered_text(f"📍 {location.upper()}", font_meta, (220, 220, 220, 255), current_y)
     draw_centered_text("lok press.", font_brand, (255, 255, 255, 255), current_y)
-    
-    # 4. Contributor Badge (Top Left or Top Center)
-    draw.text((50, 80), f"Reported by: {contributor}", font=font_meta, fill=(255, 200, 50, 255))
 
     img.save(output_path, "PNG")
-
+    
 # --- MEDIA PROCESSING (FFMPEG) ---
 def process_media(downloaded_files, overlay_path):
     print("⚙️ Processing media (Padding & Overlays)...")
