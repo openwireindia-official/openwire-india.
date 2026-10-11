@@ -5,23 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Lok Press — Citizen News Desk</title>
   
-  <!-- Google Fonts: Editorial Serif + Professional Sans -->
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;0,900;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
     :root {
-      --news-dark: #0d1b2a;
-      --news-navy: #1b263b;
-      --news-gold: #c5a059;
-      --news-gold-hover: #b08a42;
-      --news-bg: #f4f3ef;
-      --card-bg: #ffffff;
-      --input-bg: #faf9f6;
-      --border-color: #d1cdc7;
-      --text-main: #1f2937;
-      --text-muted: #4b5563;
+      /* Lok Press Color Palette */
+      --navy-deep: #0B132B;
+      --navy-main: #1C2D42;
+      --gold-primary: #C5A059;
+      --gold-hover: #B08A42;
+      --gold-light: rgba(197, 160, 89, 0.15);
+      --cream-bg: #F9F8F3;
+      --card-bg: #FFFFFF;
+      --input-bg: #FAF9F6;
+      --border-color: #E2DFD8;
+      --text-main: #1A202C;
+      --text-muted: #64748B;
     }
 
     * {
@@ -31,196 +33,205 @@
     }
 
     body {
-      background-color: var(--news-bg);
+      background-color: var(--cream-bg);
       font-family: 'Plus Jakarta Sans', sans-serif;
       color: var(--text-main);
       min-height: 100vh;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
       padding: 24px;
+      position: relative;
+      /* Dhubri Brahmaputra Sunset Landscape Background */
+      background-image: 
+        linear-gradient(135deg, rgba(249, 248, 243, 0.92) 0%, rgba(245, 242, 235, 0.88) 100%),
+        url('https://images.unsplash.com/photo-1544644181-1484b3fdfc62?auto=format&fit=crop&w=1920&q=80');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
     }
 
-    /* Main Container Card */
+    /* Container Card */
     .container {
       width: 100%;
       max-width: 580px;
       background: var(--card-bg);
       border: 1px solid var(--border-color);
-      border-radius: 6px;
-      padding: 40px;
-      box-shadow: 0 10px 25px rgba(13, 27, 42, 0.06);
+      border-radius: 16px;
+      padding: 40px 36px;
+      box-shadow: 0 20px 40px rgba(11, 19, 43, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
       position: relative;
+      overflow: hidden;
     }
 
-    /* Formal Top News Ticker/Border Line */
-    .news-header-line {
+    /* Gold Accent Top Bar */
+    .gold-bar {
       position: absolute;
       top: 0;
       left: 0;
       right: 0;
-      height: 6px;
-      background: linear-gradient(90deg, var(--news-dark) 0%, var(--news-gold) 50%, var(--news-dark) 100%);
-      border-top-left-radius: 6px;
-      border-top-right-radius: 6px;
+      height: 4px;
+      background: linear-gradient(90deg, var(--navy-deep) 0%, var(--gold-primary) 50%, var(--navy-deep) 100%);
     }
 
-    /* Header Section */
+    /* Header Styling */
     .header {
       text-align: center;
       margin-bottom: 32px;
-      border-bottom: 2px solid var(--news-bg);
-      padding-bottom: 24px;
     }
 
-    .desk-tag {
-      font-size: 0.75rem;
+    .badge {
+      display: inline-block;
+      padding: 5px 14px;
+      font-size: 0.72rem;
       font-weight: 700;
       letter-spacing: 2px;
       text-transform: uppercase;
-      color: var(--news-gold);
-      margin-bottom: 8px;
-      display: block;
+      border-radius: 30px;
+      background: var(--gold-light);
+      color: var(--gold-hover);
+      border: 1px solid rgba(197, 160, 89, 0.3);
+      margin-bottom: 12px;
     }
 
     .header h1 {
-      font-family: 'Merriweather', serif;
+      font-family: 'Cinzel', serif;
       font-size: 2.2rem;
-      font-weight: 900;
-      color: var(--news-dark);
+      font-weight: 700;
+      color: var(--navy-deep);
       letter-spacing: -0.5px;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .header p {
-      font-size: 0.9rem;
+      font-size: 0.92rem;
       color: var(--text-muted);
       line-height: 1.5;
     }
 
-    /* Form Layout */
+    /* Form Elements */
     .form-group {
-      margin-bottom: 20px;
+      margin-bottom: 22px;
     }
 
     label {
       display: block;
-      font-size: 0.78rem;
+      font-size: 0.8rem;
       font-weight: 700;
-      color: var(--news-navy);
-      margin-bottom: 6px;
+      color: var(--navy-main);
+      margin-bottom: 8px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.8px;
     }
 
     input[type="text"], textarea {
       width: 100%;
       background: var(--input-bg);
       border: 1px solid var(--border-color);
-      border-radius: 4px;
-      padding: 12px 14px;
+      border-radius: 10px;
+      padding: 14px 16px;
       color: var(--text-main);
       font-size: 0.95rem;
       outline: none;
-      transition: all 0.2s ease;
+      transition: all 0.25s ease;
     }
 
     input[type="text"]:focus, textarea:focus {
-      border-color: var(--news-gold);
+      border-color: var(--gold-primary);
       background: #FFFFFF;
-      box-shadow: 0 0 0 3px rgba(197, 160, 89, 0.15);
+      box-shadow: 0 0 0 3px rgba(197, 160, 89, 0.18);
     }
 
     textarea {
       resize: vertical;
-      min-height: 130px;
-      font-family: 'Plus Jakarta Sans', sans-serif;
+      min-height: 120px;
     }
 
-    /* Professional File Dropzone */
+    /* Custom File Dropzone */
     .file-dropzone {
       border: 2px dashed var(--border-color);
       background: var(--input-bg);
-      border-radius: 4px;
-      padding: 20px;
+      border-radius: 10px;
+      padding: 24px;
       text-align: center;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.25s ease;
     }
 
     .file-dropzone:hover {
-      border-color: var(--news-gold);
-      background: rgba(197, 160, 89, 0.03);
+      border-color: var(--gold-primary);
+      background: rgba(197, 160, 89, 0.04);
     }
 
     #fileLabel {
-      font-size: 0.85rem;
+      font-size: 0.9rem;
       font-weight: 600;
       color: var(--text-muted);
     }
 
-    /* Editorial Submit Button */
+    /* Navy & Gold Submit Button */
     .submit-btn {
       width: 100%;
-      padding: 15px;
+      padding: 16px;
       border: none;
-      border-radius: 4px;
-      background: var(--news-dark);
+      border-radius: 10px;
+      background: var(--navy-deep);
       color: #FFFFFF;
-      font-size: 0.9rem;
+      font-size: 1rem;
       font-weight: 700;
-      letter-spacing: 1px;
-      text-transform: uppercase;
+      letter-spacing: 0.5px;
       cursor: pointer;
-      transition: background 0.2s ease;
+      transition: all 0.25s ease;
       margin-top: 8px;
+      box-shadow: 0 4px 12px rgba(11, 19, 43, 0.15);
+      border: 1px solid var(--navy-main);
     }
 
     .submit-btn:hover {
-      background: var(--news-navy);
+      background: #132247;
+      border-color: var(--gold-primary);
+      box-shadow: 0 6px 18px rgba(11, 19, 43, 0.25);
+      transform: translateY(-1px);
     }
 
     .submit-btn:active {
-      transform: translateY(1px);
+      transform: translateY(0);
     }
 
-    /* Status Notifications */
+    /* Alert Message Box */
     .status-msg {
-      margin-top: 16px;
-      padding: 12px;
-      border-radius: 4px;
-      font-size: 0.85rem;
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 0.88rem;
       text-align: center;
       display: none;
-      font-weight: 600;
+      font-weight: 500;
     }
 
-    /* Footer Desk Info */
+    /* Footer Branding */
     .footer {
       text-align: center;
       margin-top: 24px;
-      font-size: 0.75rem;
+      font-size: 0.78rem;
       color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 1px;
     }
 
     .footer span {
-      color: var(--news-gold);
-      font-weight: 700;
+      color: var(--gold-hover);
+      font-weight: 600;
     }
   </style>
 </head>
 <body>
 
   <div class="container">
-    <div class="news-header-line"></div>
+    <div class="gold-bar"></div>
 
     <div class="header">
-      <span class="desk-tag">Editorial Ingestion Desk</span>
+      <span class="badge">Citizen Journalism Portal</span>
       <h1>Lok Press</h1>
-      <p>Secure submission portal for verified ground reports, local incidents, and regional media.</p>
+      <p>Independent ground reporting for Dhubri & Western Assam</p>
     </div>
 
     <!-- LOCATION INPUT -->
@@ -237,25 +248,25 @@
 
     <!-- EVENT DETAIL INPUT -->
     <div class="form-group">
-      <label for="event_detail">Report Details & Context</label>
-      <textarea id="event_detail" placeholder="Provide factual details, timeline, or context of the event..."></textarea>
+      <label for="event_detail">Incident / Event Details</label>
+      <textarea id="event_detail" placeholder="Describe what happened, key facts, or context..."></textarea>
     </div>
 
     <!-- MEDIA FILE UPLOAD DROPZONE -->
     <div class="form-group" id="fileGroup">
-      <label for="media_file">Attach Evidence (Photo / Video)</label>
+      <label for="media_file">Upload Raw Evidence (Video or Photo)</label>
       <div class="file-dropzone" onclick="document.getElementById('media_file').click()">
-        <span id="fileLabel">📁 Click or drag media files to upload</span>
+        <span id="fileLabel">📷 Click or Drag & Drop File Here</span>
         <input type="file" id="media_file" accept="video/*,image/*" style="display: none;" onchange="updateFileName(this)" />
       </div>
     </div>
 
-    <button class="submit-btn" id="submitBtn" onclick="submitForm()">Transmit Ground Report</button>
+    <button class="submit-btn" id="submitBtn" onclick="submitForm()">Submit Ground Report</button>
 
     <div id="statusMsg" class="status-msg"></div>
 
     <div class="footer">
-      <span>Lok Press Newsroom</span> • Verified Channels Only
+      Powered by <span>Lok Press Newsroom</span> • Dhubri, Assam
     </div>
   </div>
 
@@ -263,10 +274,10 @@
     function updateFileName(input) {
       const label = document.getElementById("fileLabel");
       if (input.files && input.files[0]) {
-        label.innerText = "📎 File Attached: " + input.files[0].name;
-        label.style.color = "var(--news-gold)";
+        label.innerText = "🎥 Selected: " + input.files[0].name;
+        label.style.color = "var(--gold-hover)";
       } else {
-        label.innerText = "📁 Click or drag media files to upload";
+        label.innerText = "📷 Click or Drag & Drop File Here";
         label.style.color = "var(--text-muted)";
       }
     }
@@ -278,10 +289,11 @@
       const btn = document.getElementById("submitBtn");
 
       if (!eventDetail) {
-        showStatus("Please provide report details before submission.", "#991B1B");
+        showStatus("Please write the event details before submitting.", "#D9381E");
         return;
       }
 
+      // Fallback to "Anonymous" if contributor field is empty
       if (!contributor) {
         contributor = "Anonymous";
       }
@@ -295,8 +307,9 @@
         const fileInput = document.getElementById("media_file");
         const file = fileInput.files[0];
 
+        // STEP 1: Handle Direct Resumable Upload to Google Drive if media is present
         if (file) {
-          btn.innerText = "Initializing secure transmission...";
+          btn.innerText = "Preparing secure upload...";
 
           const urlRes = await fetch('/api/get-upload-url', {
             method: 'POST',
@@ -305,9 +318,9 @@
           });
 
           const urlData = await urlRes.json();
-          if (!urlRes.ok) throw new Error(urlData.error || "Failed to generate upload parameters.");
+          if (!urlRes.ok) throw new Error(urlData.error || "Failed to generate upload URL.");
 
-          btn.innerText = "Uploading media asset...";
+          btn.innerText = "Uploading media directly to secure storage...";
 
           const uploadRes = await fetch(urlData.uploadUrl, {
             method: 'PUT',
@@ -315,16 +328,18 @@
             body: file
           });
 
-          if (!uploadRes.ok) throw new Error("Media upload transmission failed.");
+          if (!uploadRes.ok) throw new Error("Failed to upload media file.");
 
           const driveFile = await uploadRes.json();
+
           if (driveFile.id) {
             gdriveFileIds.push(driveFile.id);
           }
         }
 
-        btn.innerText = "Logging to newsroom queue...";
+        btn.innerText = "Queueing report...";
 
+        // STEP 2: Submit structured payload to database via API
         const response = await fetch('/api/submit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -342,13 +357,14 @@
           result = await response.json();
         } else {
           const rawText = await response.text();
-          throw new Error(`Server Error (${response.status}): ${rawText.slice(0, 80)}...`);
+          throw new Error(`Server Error (${response.status}): ${rawText.slice(0, 80)}... Check Vercel logs.`);
         }
 
-        if (!response.ok) throw new Error(result.error || "Submission rejected");
+        if (!response.ok) throw new Error(result.error || "Submission failed");
 
-        showStatus("✅ Report successfully transmitted to Lok Press editorial queue.", "#166534");
+        showStatus("✅ Ground report queued successfully for Lok Press processing!", "#15803D");
         
+        // Reset form inputs
         document.getElementById("location").value = "";
         document.getElementById("contributor").value = "";
         document.getElementById("event_detail").value = "";
@@ -359,9 +375,9 @@
 
       } catch (err) {
         console.error(err);
-        showStatus("❌ " + err.message, "#991B1B");
+        showStatus("❌ " + err.message, "#D9381E");
       } finally {
-        btn.innerText = "Transmit Ground Report";
+        btn.innerText = "Submit Ground Report";
         btn.disabled = false;
       }
     }
