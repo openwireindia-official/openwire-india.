@@ -25,7 +25,7 @@ GDRIVE_TMP_DIR = os.path.join(OUTPUT_DIR, "raw_media/")
 OVERLAY_FILE = os.path.join(OUTPUT_DIR, "lok_press_overlay.png")
 FINAL_OUTPUT = os.path.join(OUTPUT_DIR, "FINAL_LOK_PRESS_POST.mp4")
 FINAL_IMG_OUTPUT = os.path.join(OUTPUT_DIR, "FINAL_LOK_PRESS_POST.jpg")
-FONT_PATH = os.path.join(BASE_DIR, "Arial Bold.ttf") # Ensure this font is present
+FONT_PATH = os.path.join(BASE_DIR, "Arial Bold.ttf")
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(GDRIVE_TMP_DIR, exist_ok=True)
@@ -68,7 +68,6 @@ def download_gdrive_file(file_id, output_path):
     print(f"📥 Downloading raw media from Google Drive (ID: {file_id})...")
     service = get_gdrive_service()
     try:
-        # Get file metadata to determine extension
         file_metadata = service.files().get(fileId=file_id, fields='mimeType').execute()
         mime_type = file_metadata.get('mimeType', '')
         
@@ -87,69 +86,85 @@ def download_gdrive_file(file_id, output_path):
         print(f"❌ Failed to download from Google Drive: {e}")
         return None, None
 
-# --- LOK PRESS GRAPHICS OVERLAY ---
+# --- VECTOR-BASED LOK LENS OVERLAY ENGINE ---
 def create_lok_press_overlay(headline, location, contributor, output_path, width=1080, height=1920):
-    print("🎨 Rendering Lok Lens Badge Overlay...")
+    print("🎨 Rendering Safe-Zone Lok Lens Overlay...")
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # 1. Dark Gradient at Bottom for Headline Readability
+    # 1. Bottom Readability Gradient
     grad_start = int(height * 0.50)
     for y in range(grad_start, height):
         alpha = int(240 * ((y - grad_start) / (height - grad_start)))
         draw.line([(0, y), (width, y)], fill=(0, 0, 0, alpha))
 
-    # 2. Fonts Setup
+    # 2. Fonts Engine
     try:
         font_alert = ImageFont.truetype(FONT_PATH, 38)
         font_head = ImageFont.truetype(FONT_PATH, 55)
         font_brand = ImageFont.truetype(FONT_PATH, 42)
         font_meta = ImageFont.truetype(FONT_PATH, 34)
-        font_badge = ImageFont.truetype(FONT_PATH, 36)
+        font_badge = ImageFont.truetype(FONT_PATH, 34)
     except:
         font_alert = font_head = font_brand = font_meta = font_badge = ImageFont.load_default()
 
     # =========================================================
-    # CENTERED TOP "LOK LENS" CAPSULE BADGE
+    # 3. VECTOR LOK LENS BADGE (SAFE-ZONE POSITION)
     # =========================================================
-    badge_text = f"👁  LOK LENS • {contributor.upper()}  ✔"
-    
-    bbox = draw.textbbox((0, 0), badge_text, font=font_badge)
+    badge_label = f"LOK LENS • {contributor.upper()}"
+    bbox = draw.textbbox((0, 0), badge_label, font=font_badge)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
-    
-    padding_x = 45
-    padding_y = 22
-    box_w = text_w + (padding_x * 2)
-    box_h = text_h + (padding_y * 2)
-    
-    # Position: Centered horizontally near the top
+
+    icon_size = 32
+    padding_x = 35
+    padding_y = 18
+    gap = 16
+
+    total_content_w = icon_size + gap + text_w + gap + icon_size
+    box_w = total_content_w + (padding_x * 2)
+    box_h = max(text_h, icon_size) + (padding_y * 2)
+
+    # Position: y1 = 280 keeps it completely clear of Instagram's top header UI bar
     x1 = (width - box_w) // 2
-    y1 = 90
+    y1 = 280 
     x2 = x1 + box_w
     y2 = y1 + box_h
-    
-    # Draw glossy/translucent white pill background with a soft border
+
+    # Translucent White Pill Container
     draw.rounded_rectangle(
-        [x1, y1, x2, y2], 
-        radius=box_h // 2, 
-        fill=(255, 255, 255, 235),      # Translucent white
-        outline=(210, 215, 225, 255),   # Light silver-blue border
+        [x1, y1, x2, y2],
+        radius=box_h // 2,
+        fill=(255, 255, 255, 235),
+        outline=(210, 215, 225, 255),
         width=3
     )
-    
-    # Draw badge text (Professional Blue Tone matching the reference)
-    text_x = x1 + padding_x
-    text_y = y1 + padding_y - 2
-    draw.text((text_x, text_y), badge_text, font=font_badge, fill=(13, 110, 253, 255))
+
+    # A. Draw Vector Eye Icon (Blue)
+    eye_x = x1 + padding_x
+    eye_y = y1 + (box_h - icon_size) // 2
+    draw.ellipse([eye_x, eye_y + 6, eye_x + icon_size, eye_y + icon_size - 6], outline=(13, 110, 253, 255), width=3)
+    draw.ellipse([eye_x + 11, eye_y + 11, eye_x + 21, eye_y + 21], fill=(13, 110, 253, 255))
+
+    # B. Draw Contributor Text
+    text_x = eye_x + icon_size + gap
+    text_y = y1 + (box_h - text_h) // 2 - 2
+    draw.text((text_x, text_y), badge_label, font=font_badge, fill=(13, 110, 253, 255))
+
+    # C. Draw Vector Verified Checkmark Circle
+    chk_x = text_x + text_w + gap
+    chk_y = y1 + (box_h - icon_size) // 2
+    draw.ellipse([chk_x, chk_y, chk_x + icon_size, chk_y + icon_size], fill=(13, 110, 253, 255))
+    draw.line([(chk_x + 8, chk_y + 16), (chk_x + 14, chk_y + 22)], fill=(255, 255, 255, 255), width=4)
+    draw.line([(chk_x + 14, chk_y + 22), (chk_x + 24, chk_y + 10)], fill=(255, 255, 255, 255), width=4)
 
     # =========================================================
-    # LOWER-THIRD HEADLINE & BRANDING
+    # 4. LOWER-THIRD HEADLINE & BRANDING
     # =========================================================
     def draw_centered_text(text, font, fill, y_pos, bg_color=None):
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
+        bbox_t = draw.textbbox((0, 0), text, font=font)
+        tw = bbox_t[2] - bbox_t[0]
+        th = bbox_t[3] - bbox_t[1]
         x_pos = (width - tw) // 2
         
         if bg_color:
@@ -160,35 +175,32 @@ def create_lok_press_overlay(headline, location, contributor, output_path, width
 
     current_y = int(height * 0.65)
 
-    # ALERT Header
     current_y = draw_centered_text("ALERT", font_alert, (255, 255, 255, 255), current_y)
 
-    # Red News Headline Box
     current_y = draw_centered_text(
-        headline.upper(), 
-        font_head, 
-        fill=(255, 255, 255, 255), 
-        y_pos=current_y, 
+        headline.upper(),
+        font_head,
+        fill=(255, 255, 255, 255),
+        y_pos=current_y,
         bg_color=(200, 30, 30, 255)
     )
 
-    # Location & Brand
-    current_y = draw_centered_text(f"📍 {location.upper()}", font_meta, (220, 220, 220, 255), current_y)
+    location_text = f"LOCATION: {location.upper()}"
+    current_y = draw_centered_text(location_text, font_meta, (220, 220, 220, 255), current_y)
+    
     draw_centered_text("lok press.", font_brand, (255, 255, 255, 255), current_y)
 
     img.save(output_path, "PNG")
-    
-# --- MEDIA PROCESSING (FFMPEG) ---
+
+# --- MEDIA PROCESSING ---
 def process_media(downloaded_files, overlay_path):
     print("⚙️ Processing media (Padding & Overlays)...")
     
     videos = [f for f in downloaded_files if f.endswith(".mp4")]
     images = [f for f in downloaded_files if f.endswith(".jpg")]
     
-    # CASE 1: Single Video
     if videos:
         input_vid = videos[0]
-        # Pad to 9:16, keep original audio, overlay text
         cmd = [
             "ffmpeg", "-y", "-i", input_vid, "-i", overlay_path,
             "-filter_complex", 
@@ -199,15 +211,13 @@ def process_media(downloaded_files, overlay_path):
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return FINAL_OUTPUT, "VIDEO"
 
-    # CASE 2: Multiple Photos (Slideshow Video)
     elif len(images) > 1:
-        # Create a text file for ffmpeg concat demuxer
         concat_file = os.path.join(GDRIVE_TMP_DIR, "slides.txt")
         with open(concat_file, "w") as f:
             for img in images:
                 f.write(f"file '{os.path.abspath(img)}'\n")
-                f.write("duration 3\n") # 3 seconds per photo
-            f.write(f"file '{os.path.abspath(images[-1])}'\n") # Repeat last to prevent truncation
+                f.write("duration 3\n")
+            f.write(f"file '{os.path.abspath(images[-1])}'\n")
             
         cmd = [
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file, "-i", overlay_path,
@@ -218,7 +228,6 @@ def process_media(downloaded_files, overlay_path):
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return FINAL_OUTPUT, "VIDEO"
 
-    # CASE 3: Single Photo
     elif len(images) == 1:
         bg = Image.open(images[0]).convert("RGBA")
         overlay = Image.open(overlay_path).convert("RGBA")
@@ -236,9 +245,8 @@ def process_media(downloaded_files, overlay_path):
         
     return None, None
 
-# --- UGUU.SE HOSTING & IG PUBLISHING ---
 def upload_to_uguu(file_path):
-    print("📤 Uploading media to Uguu.se for Meta ingestion...")
+    print("📤 Uploading media to Uguu.se...")
     cmd = [
         "curl", "-s", "-X", "POST", "https://uguu.se/upload.php",
         "-F", f"files[]=@{file_path}",
@@ -278,7 +286,6 @@ def cleanup():
     if os.path.exists(FINAL_OUTPUT): os.remove(FINAL_OUTPUT)
     if os.path.exists(FINAL_IMG_OUTPUT): os.remove(FINAL_IMG_OUTPUT)
 
-# --- MAIN LOOP ---
 def main():
     print("📡 Lok Press Automation Started...")
     requests_data = supabase.table("news_requests").select("*").eq("status", "pending").execute().data
@@ -290,7 +297,7 @@ def main():
     for req in requests_data:
         req_id = req["id"]
         event_detail = req["event_detail"]
-        location = req["location"] or "Local News"
+        location = req["location"] or "Dhubri"
         contributor = req["contributor_name"] or "Anonymous"
         gdrive_ids = req.get("gdrive_file_ids", [])
         
@@ -300,11 +307,9 @@ def main():
         supabase.table("news_requests").update({"status": "processing"}).eq("id", req_id).execute()
 
         try:
-            # 1. AI Headline Generation
             prompt = f"Extract a maximum 6 word punchy news headline from this event detail: '{event_detail}'. Return strictly the headline text."
             headline = llm_client.models.generate_content(model=GEMINI_MODEL, contents=prompt).text.strip().replace('"', '')
 
-            # 2. Download Media
             downloaded_files = []
             for idx, gid in enumerate(gdrive_ids):
                 path, mtype = download_gdrive_file(gid, os.path.join(GDRIVE_TMP_DIR, f"media_{idx}"))
@@ -313,17 +318,14 @@ def main():
             if not downloaded_files:
                 raise Exception("No valid media could be downloaded.")
 
-            # 3. Create Graphic Overlay
             create_lok_press_overlay(headline, location, contributor, OVERLAY_FILE)
 
-            # 4. Render Media
             final_media_path, media_type = process_media(downloaded_files, OVERLAY_FILE)
 
-            # 5. Host & Publish
             public_url = upload_to_uguu(final_media_path)
             if not public_url: raise Exception("Failed to host media externally.")
 
-            caption = f"{headline}\n\n{event_detail}\n\n📍 {location}\n🎙️ Reported by: {contributor}\n\n#LokPress #News"
+            caption = f"{headline}\n\n{event_detail}\n\n📍 {location}\n🎙️ Reported by: {contributor}\n\n#LokPress #Dhubri #News"
             ig_id = publish_to_instagram(public_url, media_type, caption)
             
             if ig_id:
@@ -341,4 +343,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
