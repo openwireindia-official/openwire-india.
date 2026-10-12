@@ -87,25 +87,24 @@ def download_gdrive_file(file_id, output_path):
         print(f"❌ Failed to download from Google Drive: {e}")
         return None, None
 
-# --- EDITORIAL GRAPHIC OVERLAY ENGINE (3:4 ASPECT RATIO - 1080x1440) ---
-def create_lok_press_overlay(headline, subheadline, summary, location, contributor, output_path, width=1080, height=1440):
-    print("🎨 Rendering Editorial News Graphic Overlay with High Contrast...")
+# --- CLEAN EDITORIAL GRAPHIC OVERLAY ENGINE (3:4 RATIO - 1080x1440) ---
+def create_lok_press_overlay(headline, subheadline, location, contributor, output_path, width=1080, height=1440):
+    print("🎨 Rendering Clean Editorial News Graphic Overlay...")
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
     # 1. Fonts Setup
     try:
-        font_date = ImageFont.truetype(FONT_PATH, 22)
-        font_head = ImageFont.truetype(FONT_PATH, 40)
+        font_date = ImageFont.truetype(FONT_PATH, 24)
+        font_head = ImageFont.truetype(FONT_PATH, 42)
         font_sub = ImageFont.truetype(FONT_PATH, 25)
-        font_body = ImageFont.truetype(FONT_PATH, 21)
         font_badge = ImageFont.truetype(FONT_PATH, 24)
         font_footer = ImageFont.truetype(FONT_PATH, 22)
     except:
-        font_date = font_head = font_sub = font_body = font_badge = font_footer = ImageFont.load_default()
+        font_date = font_head = font_sub = font_badge = font_footer = ImageFont.load_default()
 
     # =========================================================
-    # 2. TOP FLOATING LOK LENS PILL BADGE (SEPARATE AT TOP)
+    # 2. TOP FLOATING LOK LENS PILL BADGE
     # =========================================================
     badge_label = f"LOK LENS • {contributor.upper()}"
     bbox = draw.textbbox((0, 0), badge_label, font=font_badge)
@@ -114,20 +113,18 @@ def create_lok_press_overlay(headline, subheadline, summary, location, contribut
 
     icon_size = 28
     padding_x = 28
-    padding_y = 14
+    padding_y = 12
     gap = 12
 
     total_content_w = icon_size + gap + text_w + gap + icon_size
     box_w = total_content_w + (padding_x * 2)
     box_h = max(text_h, icon_size) + (padding_y * 2)
 
-    # Position: Centered horizontally near the top
     x1 = (width - box_w) // 2
-    y1 = 60 
+    y1 = 50 
     x2 = x1 + box_w
     y2 = y1 + box_h
 
-    # Translucent White Pill Container
     draw.rounded_rectangle(
         [x1, y1, x2, y2],
         radius=box_h // 2,
@@ -136,18 +133,18 @@ def create_lok_press_overlay(headline, subheadline, summary, location, contribut
         width=2
     )
 
-    # A. Eye Icon
+    # Eye Icon
     eye_x = x1 + padding_x
     eye_y = y1 + (box_h - icon_size) // 2
     draw.ellipse([eye_x, eye_y + 4, eye_x + icon_size, eye_y + icon_size - 4], outline=(13, 110, 253, 255), width=3)
     draw.ellipse([eye_x + 9, eye_y + 9, eye_x + 19, eye_y + 19], fill=(13, 110, 253, 255))
 
-    # B. Contributor Text
+    # Contributor Text
     text_x = eye_x + icon_size + gap
     text_y_pos = y1 + (box_h - text_h) // 2 - 2
     draw.text((text_x, text_y_pos), badge_label, font=font_badge, fill=(13, 110, 253, 255))
 
-    # C. Verified Checkmark Circle
+    # Verified Checkmark
     chk_x = text_x + text_w + gap
     chk_y = y1 + (box_h - icon_size) // 2
     draw.ellipse([chk_x, chk_y, chk_x + icon_size, chk_y + icon_size], fill=(13, 110, 253, 255))
@@ -155,49 +152,26 @@ def create_lok_press_overlay(headline, subheadline, summary, location, contribut
     draw.line([(chk_x + 12, chk_y + 19), (chk_x + 21, chk_y + 8)], fill=(255, 255, 255, 255), width=3)
 
     # =========================================================
-    # 3. DARK GRADIENT SHADOW (HEAVY FADE FOR HIGH CONTRAST)
-    # =========================================================
-    # Fades from transparent at 35% height to solid deep dark background at bottom
-    grad_start = int(height * 0.35)
-    for y in range(grad_start, height):
-        progress = (y - grad_start) / (height - grad_start)
-        # Cubic curve gives stronger dark contrast right behind text
-        alpha = int(255 * (progress ** 1.5))
-        draw.line([(0, y), (width, y)], fill=(8, 12, 22, alpha))  # Deep Charcoal/Navy Shadow
-
-    # =========================================================
-    # 4. TOP LEFT DATE BADGE
+    # 3. TOP LEFT DATE BADGE
     # =========================================================
     now = datetime.now()
     day = now.day
     suffix = 'th' if 11 <= day <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
-    date_str = f"📅 {day}{suffix} {now.strftime('%B, %Y').upper()}"
-    draw.text((40, 68), date_str, font=font_date, fill=(255, 255, 255, 230))
+    date_str = f"• {day}{suffix} {now.strftime('%B, %Y').upper()}"
+    draw.text((40, 58), date_str, font=font_date, fill=(255, 255, 255, 230))
 
     # =========================================================
-    # 5. LOWER THIRD EDITORIAL NEWS CONTENT
+    # 4. DARK GRADIENT SHADOW (LOWER THIRD BACKDROP)
     # =========================================================
-    text_y = int(height * 0.58)
+    grad_start = int(height * 0.45)
+    for y in range(grad_start, height):
+        progress = (y - grad_start) / (height - grad_start)
+        alpha = int(255 * (progress ** 1.4))
+        draw.line([(0, y), (width, y)], fill=(8, 12, 22, alpha))
 
-    # A. Gold Main Headline
-    draw.text((40, text_y), headline.upper(), font=font_head, fill="#FFC837")
-    text_y += 55
-
-    # B. Subtitle / Context Line (White)
-    if subheadline:
-        draw.text((40, text_y), subheadline, font=font_sub, fill="#FFFFFF")
-        text_y += 40
-
-    # Thin Divider Line
-    draw.line([(40, text_y), (1040, text_y)], fill=(255, 255, 255, 100), width=2)
-    text_y += 25
-
-    # C. "LOCAL UPDATE" Category Block
-    badge_box = [40, text_y, 220, text_y + 100]
-    draw.rectangle(badge_box, fill="#FFC837")
-    draw.text((55, text_y + 18), "LOCAL\nUPDATE", font=font_badge, fill="#000000")
-
-    # D. Gemini Summary Text Block (Clean & Legible over Dark Shadow)
+    # =========================================================
+    # 5. SMART TEXT WRAPPING & BOTTOM PLACEMENT
+    # =========================================================
     def wrap_text(text, font, max_width):
         lines = []
         words = text.split()
@@ -208,23 +182,41 @@ def create_lok_press_overlay(headline, subheadline, summary, location, contribut
             lines.append(line.strip())
         return lines
 
-    summary_lines = wrap_text(summary, font_body, 780)
-    line_y = text_y
-    for line in summary_lines[:4]:  # Max 4 lines
-        draw.text((245, line_y), line, font=font_body, fill="#F1F5F9")
-        line_y += 26
+    headline_lines = wrap_text(headline.upper(), font_head, 1000)
+    sub_lines = wrap_text(subheadline, font_sub, 1000) if subheadline else []
+
+    footer_height = 65
+    bottom_margin = 35
+    
+    # Calculate height required for text block
+    total_text_h = (len(headline_lines) * 50) + (len(sub_lines) * 35) + (15 if sub_lines else 0)
+    start_y = height - footer_height - bottom_margin - total_text_h
+
+    current_y = start_y
+
+    # Draw Headline Lines (Gold)
+    for line in headline_lines:
+        draw.text((40, current_y), line, font=font_head, fill="#FFC837")
+        current_y += 50
+
+    if sub_lines:
+        current_y += 5
+        # Draw Subheadline Lines (White)
+        for line in sub_lines:
+            draw.text((40, current_y), line, font=font_sub, fill="#FFFFFF")
+            current_y += 35
 
     # =========================================================
     # 6. FOOTER BRANDING STRIP
     # =========================================================
-    footer_y = height - 65
+    footer_y = height - footer_height
     draw.rectangle([0, footer_y, width, height], fill="#FFC837")
-    footer_text = f"🔔 STAY UPDATED • @LOKPRESS.DHUBRI  |  📍 {location.upper()}"
-    draw.text((40, footer_y + 18), footer_text, font=font_footer, fill="#000000")
+    footer_text = f"• STAY UPDATED • @LOKPRESS.DHUBRI  |  • {location.upper()}"
+    draw.text((40, footer_y + 20), footer_text, font=font_footer, fill="#000000")
 
     img.save(output_path, "PNG")
 
-# --- MEDIA PROCESSING (Targeted 1080x1440 Ratio) ---
+# --- MEDIA PROCESSING ---
 def process_media(downloaded_files, overlay_path):
     print("⚙️ Processing media (3:4 Ratio Padding & Overlays)...")
     
@@ -264,7 +256,6 @@ def process_media(downloaded_files, overlay_path):
         bg = Image.open(images[0]).convert("RGBA")
         overlay = Image.open(overlay_path).convert("RGBA")
         
-        # Fit image to 1080x1440
         bg.thumbnail((1080, 1440), Image.Resampling.LANCZOS)
         canvas = Image.new("RGBA", (1080, 1440), (8, 12, 22, 255))
         
@@ -340,35 +331,30 @@ def main():
         supabase.table("news_requests").update({"status": "processing"}).eq("id", req_id).execute()
 
         try:
-            # Multi-part AI Analysis using Gemini
+            # Clean AI Prompt generating headline and subheadline only
             prompt = f"""
             Analyze the following ground report details:
             "{event_detail}"
 
-            Generate 3 outputs:
-            1. HEADLINE: A high-impact 6-8 word news headline.
-            2. SUBHEADLINE: A 1-line subtitle contextualizing key people or place.
-            3. SUMMARY: A concise 2-3 sentence report summary.
+            Generate 2 outputs:
+            1. HEADLINE: A high-impact 6-8 word news headline in uppercase.
+            2. SUBHEADLINE: A 1-line subtitle or summary contextualizing the event.
 
-            Format exactly as:
+            Format strictly as:
             HEADLINE: <headline>
             SUBHEADLINE: <subheadline>
-            SUMMARY: <summary>
             """
             
             ai_res = llm_client.models.generate_content(model=GEMINI_MODEL, contents=prompt).text.strip()
             
             headline = "DHUBRI LOCAL REPORT"
             subheadline = ""
-            summary = event_detail
 
             for line in ai_res.split("\n"):
                 if line.startswith("HEADLINE:"):
                     headline = line.replace("HEADLINE:", "").strip().replace('"', '')
                 elif line.startswith("SUBHEADLINE:"):
                     subheadline = line.replace("SUBHEADLINE:", "").strip().replace('"', '')
-                elif line.startswith("SUMMARY:"):
-                    summary = line.replace("SUMMARY:", "").strip().replace('"', '')
 
             downloaded_files = []
             for idx, gid in enumerate(gdrive_ids):
@@ -378,15 +364,15 @@ def main():
             if not downloaded_files:
                 raise Exception("No valid media could be downloaded.")
 
-            # Create 3:4 Overlay Card
-            create_lok_press_overlay(headline, subheadline, summary, location, contributor, OVERLAY_FILE)
+            # Create clean 3:4 Overlay Card
+            create_lok_press_overlay(headline, subheadline, location, contributor, OVERLAY_FILE)
 
             final_media_path, media_type = process_media(downloaded_files, OVERLAY_FILE)
 
             public_url = upload_to_uguu(final_media_path)
             if not public_url: raise Exception("Failed to host media externally.")
 
-            caption = f"📌 {headline}\n\n{summary}\n\n📍 Location: {location}\n🎙️ Contributor: {contributor}\n\n#LokPress #Dhubri #AssamNews #CitizenJournalism"
+            caption = f"📌 {headline}\n\n{event_detail}\n\n📍 Location: {location}\n🎙️ Contributor: {contributor}\n\n#LokPress #Dhubri #AssamNews #CitizenJournalism"
             ig_id = publish_to_instagram(public_url, media_type, caption)
             
             if ig_id:
