@@ -52,7 +52,48 @@ if not all([SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY]):
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 llm_client = genai.Client(api_key=GEMINI_API_KEY)
-GEMINI_MODEL = "gemini-3.5-flash"
+
+# --- BULLETPROOF AUTONOMOUS AI GENERATOR ---
+def generate_ai_metadata(event_detail):
+    # Dynamic list of stable fallbacks to eliminate 503 bottlenecks
+    models_to_try = [
+        "gemini-flash-latest", 
+        "gemini-3.8-flash", 
+        "gemini-3.6-flash", 
+        "gemini-3.5-flash-lite"
+    ]
+    
+    prompt = f"""
+    Analyze the following ground report details:
+    "{event_detail}"
+
+    Generate 2 outputs:
+    1. HEADLINE: A high-impact 6-8 word news headline in uppercase.
+    2. SUBHEADLINE: A 1-line subtitle or summary contextualizing the event.
+
+    Format strictly as:
+    HEADLINE: <headline>
+    SUBHEADLINE: <subheadline>
+    """
+
+    for model in models_to_try:
+        for attempt in range(2):
+            try:
+                print(f"🤖 Attempting generation with model: {model} (Attempt {attempt+1}/2)...")
+                response = llm_client.models.generate_content(model=model, contents=prompt)
+                if response and response.text:
+                    return response.text.strip()
+            except Exception as e:
+                print(f"⚠️ Model {model} busy/unavailable: {e}. Retrying...")
+                time.sleep(3)
+
+    # --- ZERO-CRASH LOCAL PARSER FAIL-SAFE ---
+    print("⚠️ All AI models experiencing high demand. Activating autonomous local text parser...")
+    clean_text = re.sub(r'[^\w\s]', '', event_detail)
+    words = clean_text.split()
+    fallback_head = " ".join(words[:7]).upper() if words else "DHUBRI LOCAL REPORT"
+    fallback_sub = "Verified ground report via Lok Press Desk."
+    return f"HEADLINE: {fallback_head}\nSUBHEADLINE: {fallback_sub}"
 
 # --- GOOGLE DRIVE INTEGRATION ---
 def get_gdrive_service():
@@ -93,7 +134,6 @@ def create_lok_press_overlay(headline, subheadline, location, contributor, outpu
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # 1. Fonts Setup
     try:
         font_date = ImageFont.truetype(FONT_PATH, 24)
         font_head = ImageFont.truetype(FONT_PATH, 42)
@@ -103,9 +143,7 @@ def create_lok_press_overlay(headline, subheadline, location, contributor, outpu
     except:
         font_date = font_head = font_sub = font_badge = font_footer = ImageFont.load_default()
 
-    # =========================================================
-    # 2. TOP FLOATING LOK LENS PILL BADGE
-    # =========================================================
+    # Top Floating Lok Lens Pill Badge
     badge_label = f"LOK LENS • {contributor.upper()}"
     bbox = draw.textbbox((0, 0), badge_label, font=font_badge)
     text_w = bbox[2] - bbox[0]
@@ -151,27 +189,21 @@ def create_lok_press_overlay(headline, subheadline, location, contributor, outpu
     draw.line([(chk_x + 7, chk_y + 14), (chk_x + 12, chk_y + 19)], fill=(255, 255, 255, 255), width=3)
     draw.line([(chk_x + 12, chk_y + 19), (chk_x + 21, chk_y + 8)], fill=(255, 255, 255, 255), width=3)
 
-    # =========================================================
-    # 3. TOP LEFT DATE BADGE
-    # =========================================================
+    # Top Left Date Badge
     now = datetime.now()
     day = now.day
     suffix = 'th' if 11 <= day <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
     date_str = f"• {day}{suffix} {now.strftime('%B, %Y').upper()}"
     draw.text((40, 58), date_str, font=font_date, fill=(255, 255, 255, 230))
 
-    # =========================================================
-    # 4. DARK GRADIENT SHADOW (LOWER THIRD BACKDROP)
-    # =========================================================
+    # Dark Gradient Shadow (Lower Third)
     grad_start = int(height * 0.45)
     for y in range(grad_start, height):
         progress = (y - grad_start) / (height - grad_start)
         alpha = int(255 * (progress ** 1.4))
         draw.line([(0, y), (width, y)], fill=(8, 12, 22, alpha))
 
-    # =========================================================
-    # 5. SMART TEXT WRAPPING & BOTTOM PLACEMENT
-    # =========================================================
+    # Smart Text Wrapping
     def wrap_text(text, font, max_width):
         lines = []
         words = text.split()
@@ -187,28 +219,21 @@ def create_lok_press_overlay(headline, subheadline, location, contributor, outpu
 
     footer_height = 65
     bottom_margin = 35
-    
-    # Calculate height required for text block
     total_text_h = (len(headline_lines) * 50) + (len(sub_lines) * 35) + (15 if sub_lines else 0)
     start_y = height - footer_height - bottom_margin - total_text_h
 
     current_y = start_y
-
-    # Draw Headline Lines (Gold)
     for line in headline_lines:
         draw.text((40, current_y), line, font=font_head, fill="#FFC837")
         current_y += 50
 
     if sub_lines:
         current_y += 5
-        # Draw Subheadline Lines (White)
         for line in sub_lines:
             draw.text((40, current_y), line, font=font_sub, fill="#FFFFFF")
             current_y += 35
 
-    # =========================================================
-    # 6. FOOTER BRANDING STRIP
-    # =========================================================
+    # Footer Branding Strip
     footer_y = height - footer_height
     draw.rectangle([0, footer_y, width, height], fill="#FFC837")
     footer_text = f"• STAY UPDATED • @LOKPRESS.DHUBRI  |  • {location.upper()}"
@@ -218,8 +243,7 @@ def create_lok_press_overlay(headline, subheadline, location, contributor, outpu
 
 # --- MEDIA PROCESSING ---
 def process_media(downloaded_files, overlay_path):
-    print("⚙️ Processing media (3:4 Ratio Padding & Overlays)...")
-    
+    print("⚙️ Processing media...")
     videos = [f for f in downloaded_files if f.endswith(".mp4")]
     images = [f for f in downloaded_files if f.endswith(".jpg")]
     
@@ -235,34 +259,14 @@ def process_media(downloaded_files, overlay_path):
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return FINAL_OUTPUT, "VIDEO"
 
-    elif len(images) > 1:
-        concat_file = os.path.join(GDRIVE_TMP_DIR, "slides.txt")
-        with open(concat_file, "w") as f:
-            for img in images:
-                f.write(f"file '{os.path.abspath(img)}'\n")
-                f.write("duration 3\n")
-            f.write(f"file '{os.path.abspath(images[-1])}'\n")
-            
-        cmd = [
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file, "-i", overlay_path,
-            "-filter_complex",
-            "[0:v]scale=1080:1440:force_original_aspect_ratio=decrease,pad=1080:1440:(ow-iw)/2:(oh-ih)/2:color=black[bg];[bg][1:v]overlay=0:0",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30", FINAL_OUTPUT
-        ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return FINAL_OUTPUT, "VIDEO"
-
     elif len(images) == 1:
         bg = Image.open(images[0]).convert("RGBA")
         overlay = Image.open(overlay_path).convert("RGBA")
-        
         bg.thumbnail((1080, 1440), Image.Resampling.LANCZOS)
         canvas = Image.new("RGBA", (1080, 1440), (8, 12, 22, 255))
-        
         paste_x = (1080 - bg.width) // 2
         paste_y = (1440 - bg.height) // 2
         canvas.paste(bg, (paste_x, paste_y))
-        
         canvas.alpha_composite(overlay)
         canvas.convert("RGB").save(FINAL_IMG_OUTPUT, "JPEG", quality=95)
         return FINAL_IMG_OUTPUT, "IMAGE"
@@ -271,27 +275,31 @@ def process_media(downloaded_files, overlay_path):
 
 def upload_to_uguu(file_path):
     print("📤 Uploading media to Uguu.se...")
-    cmd = [
-        "curl", "-s", "-X", "POST", "https://uguu.se/upload.php",
-        "-F", f"files[]=@{file_path}",
-        "-A", "Mozilla/5.0"
-    ]
+    cmd = ["curl", "-s", "-X", "POST", "https://uguu.se/upload.php", "-F", f"files[]=@{file_path}", "-A", "Mozilla/5.0"]
     result = subprocess.run(cmd, capture_output=True, text=True)
-    data = json.loads(result.stdout)
-    if data.get("success"):
-        return data["files"][0]["url"]
+    try:
+        data = json.loads(result.stdout)
+        if data.get("success"):
+            return data["files"][0]["url"]
+    except:
+        pass
     return None
 
 def publish_to_instagram(media_url, media_type, caption):
     print("🚀 Publishing to Instagram...")
     container_url = f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media"
+    payload = {
+        "media_type": "REELS" if media_type == "VIDEO" else "IMAGE", 
+        ("video_url" if media_type == "VIDEO" else "image_url"): media_url, 
+        "caption": caption, 
+        "access_token": IG_ACCESS_TOKEN
+    }
     
-    if media_type == "VIDEO":
-        payload = {"media_type": "REELS", "video_url": media_url, "caption": caption, "access_token": IG_ACCESS_TOKEN}
-    else:
-        payload = {"image_url": media_url, "caption": caption, "access_token": IG_ACCESS_TOKEN}
-        
     res = requests.post(container_url, data=payload).json()
+    if "error" in res:
+        print(f"❌ Instagram Container Error: {res['error'].get('message')}")
+        return None
+
     creation_id = res.get("id")
     if not creation_id: return None
     
@@ -302,16 +310,19 @@ def publish_to_instagram(media_url, media_type, caption):
             if status_res.get("status_code") == "FINISHED": break
 
     pub_res = requests.post(f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media_publish", data={"creation_id": creation_id, "access_token": IG_ACCESS_TOKEN}).json()
+    if "error" in pub_res:
+        print(f"❌ Instagram Publish Error: {pub_res['error'].get('message')}")
+        return None
+
     return pub_res.get("id")
 
 def cleanup():
     for f in glob.glob(os.path.join(GDRIVE_TMP_DIR, "*")): os.remove(f)
-    if os.path.exists(OVERLAY_FILE): os.remove(OVERLAY_FILE)
-    if os.path.exists(FINAL_OUTPUT): os.remove(FINAL_OUTPUT)
-    if os.path.exists(FINAL_IMG_OUTPUT): os.remove(FINAL_IMG_OUTPUT)
+    for f in [OVERLAY_FILE, FINAL_OUTPUT, FINAL_IMG_OUTPUT]:
+        if os.path.exists(f): os.remove(f)
 
 def main():
-    print("📡 Lok Press Automation Started...")
+    print("📡 Lok Press Autonomous GitHub Action Started...")
     requests_data = supabase.table("news_requests").select("*").eq("status", "pending").execute().data
     
     if not requests_data:
@@ -331,21 +342,8 @@ def main():
         supabase.table("news_requests").update({"status": "processing"}).eq("id", req_id).execute()
 
         try:
-            # Clean AI Prompt generating headline and subheadline only
-            prompt = f"""
-            Analyze the following ground report details:
-            "{event_detail}"
-
-            Generate 2 outputs:
-            1. HEADLINE: A high-impact 6-8 word news headline in uppercase.
-            2. SUBHEADLINE: A 1-line subtitle or summary contextualizing the event.
-
-            Format strictly as:
-            HEADLINE: <headline>
-            SUBHEADLINE: <subheadline>
-            """
-            
-            ai_res = llm_client.models.generate_content(model=GEMINI_MODEL, contents=prompt).text.strip()
+            # Autonomous generation with model fallback and local text safety net
+            ai_res = generate_ai_metadata(event_detail)
             
             headline = "DHUBRI LOCAL REPORT"
             subheadline = ""
@@ -364,9 +362,7 @@ def main():
             if not downloaded_files:
                 raise Exception("No valid media could be downloaded.")
 
-            # Create clean 3:4 Overlay Card
             create_lok_press_overlay(headline, subheadline, location, contributor, OVERLAY_FILE)
-
             final_media_path, media_type = process_media(downloaded_files, OVERLAY_FILE)
 
             public_url = upload_to_uguu(final_media_path)
@@ -390,4 +386,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
+    
