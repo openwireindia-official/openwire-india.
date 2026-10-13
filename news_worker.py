@@ -52,7 +52,7 @@ if not all([SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY]):
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 llm_client = genai.Client(api_key=GEMINI_API_KEY)
-GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 # --- GOOGLE DRIVE INTEGRATION ---
 def get_gdrive_service():
