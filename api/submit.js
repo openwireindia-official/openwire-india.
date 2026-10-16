@@ -1,9 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
+// Initialize Supabase Client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+// Initialize Upstash Rate Limiter (3 requests per 1 hour window per IP)
+const ratelimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(3, "1 h"),
+  analytics: true,
+});
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -11,6 +21,16 @@ export default async function handler(req, res) {
   }
 
   try {
+    // 1. Enforce IP Rate Limiting
+    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || '127.0.0.1';
+    const { success: rateLimitPassed } = await ratelimit.limit(`submit_${ip}`);
+
+    if (!rateLimitPassed) {
+      return res.status(429).json({ 
+        error: 'Too many reports submitted from your IP address. Please try again in an hour.' 
+      });
+    }
+
     const { 
       location = 'Unspecified', 
       contributor_name = 'Anonymous', 
@@ -20,12 +40,10 @@ export default async function handler(req, res) {
       turnstile_token 
     } = req.body;
 
-    // 1. Verify Cloudflare Turnstile Token server-side
+    // 2. Verify Cloudflare Turnstile Token server-side
     if (!turnstile_token) {
       return res.status(400).json({ error: 'Bot verification token is missing.' });
     }
-
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
     const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
       method: 'POST',
@@ -53,7 +71,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Event details exceed maximum allowed length.' });
     }
 
-    // 2. Insert into Supabase matching your schema safely
+    // 3. Insert into Supabase matching your schema safely
     const { data, error } = await supabase
       .from('news_requests')
       .insert([
@@ -74,7 +92,7 @@ export default async function handler(req, res) {
 
     const requestId = data[0].id;
 
-    // 3. Trigger GitHub Actions via Repository Dispatch (worker trigger)
+    // 4. Trigger GitHub Actions via Repository Dispatch (worker trigger)
     if (process.env.GITHUB_PAT && process.env.GITHUB_OWNER && process.env.GITHUB_REPO) {
       const ghResponse = await fetch(
         `https://api.github.com/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/dispatches`,
