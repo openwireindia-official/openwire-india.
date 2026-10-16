@@ -11,14 +11,36 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Destructure all incoming fields from index.html (with fallbacks)
     const { 
       location = 'Unspecified', 
       contributor_name = 'Anonymous', 
       event_detail, 
       content, 
-      gdrive_file_ids = [] 
+      gdrive_file_ids = [],
+      turnstile_token 
     } = req.body;
+
+    // 1. Verify Cloudflare Turnstile Token server-side
+    if (!turnstile_token) {
+      return res.status(400).json({ error: 'Bot verification token is missing.' });
+    }
+
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+    const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: process.env.TURNSTILE_SECRET_KEY,
+        response: turnstile_token,
+        remoteip: ip
+      })
+    });
+
+    const verifyData = await verifyRes.json();
+    if (!verifyData.success) {
+      return res.status(403).json({ error: 'Bot verification failed. Please try again.' });
+    }
 
     // Support both event_detail and content fields
     const finalDetail = event_detail || content;
@@ -27,15 +49,19 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Content/description is required' });
     }
 
-    // 1. Insert into Supabase matching your schema
+    if (finalDetail.length > 5000) {
+      return res.status(400).json({ error: 'Event details exceed maximum allowed length.' });
+    }
+
+    // 2. Insert into Supabase matching your schema safely
     const { data, error } = await supabase
       .from('news_requests')
       .insert([
         {
-          location: location,
-          contributor_name: contributor_name,
-          event_detail: finalDetail,
-          gdrive_file_ids: gdrive_file_ids,
+          location: location ? location.slice(0, 150) : 'Unspecified',
+          contributor_name: contributor_name ? contributor_name.slice(0, 100) : 'Anonymous',
+          event_detail: finalDetail.trim(),
+          gdrive_file_ids: Array.isArray(gdrive_file_ids) ? gdrive_file_ids : [],
           status: 'pending'
         }
       ])
@@ -48,7 +74,7 @@ export default async function handler(req, res) {
 
     const requestId = data[0].id;
 
-    // 2. Trigger GitHub Actions via Repository Dispatch (optional worker trigger)
+    // 3. Trigger GitHub Actions via Repository Dispatch (worker trigger)
     if (process.env.GITHUB_PAT && process.env.GITHUB_OWNER && process.env.GITHUB_REPO) {
       const ghResponse = await fetch(
         `https://api.github.com/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/dispatches`,
