@@ -1,497 +1,426 @@
-<!DOCTYPE html>  
-<html lang="en">  
-<head>  
-  <meta charset="UTF-8" />  
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />  
-  <title>Lok Press — Citizen News Desk</title>    
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lok Press — Citizen News Desk</title>
 
-  <!-- Google Fonts -->    
-  <link rel="preconnect" href="https://fonts.googleapis.com">  
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>  
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">    
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- Cloudflare Turnstile Script -->
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
-  <style>  
-    :root {  
-      --navy-deep: #0B132B;  
-      --navy-main: #1C2D42;  
-      --gold-primary: #C5A059;  
-      --gold-hover: #B08A42;  
-      --gold-light: rgba(197, 160, 89, 0.15);  
-      --cream-bg: #F9F8F3;  
-      --card-bg: #FFFFFF;  
-      --input-bg: #FAF9F6;  
-      --border-color: #E2DFD8;  
-      --text-main: #1A202C;  
-      --text-muted: #64748B;  
-    }  
-  
-    * {  
-      box-sizing: border-box;  
-      margin: 0;  
-      padding: 0;  
-    }  
-  
-    body {  
-      background-color: var(--cream-bg);  
-      font-family: 'Plus Jakarta Sans', sans-serif;  
-      color: var(--text-main);  
-      min-height: 100vh;  
-      display: flex;  
-      align-items: center;  
-      justify-content: center;  
-      padding: 24px;  
-      position: relative;  
-      background-image:   
-        linear-gradient(135deg, rgba(249, 248, 243, 0.92) 0%, rgba(245, 242, 235, 0.88) 100%),  
-        url('https://images.unsplash.com/photo-1544644181-1484b3fdfc62?auto=format&fit=crop&w=1920&q=80');  
-      background-size: cover;  
-      background-position: center;  
-      background-attachment: fixed;  
-    }  
-  
-    .container {  
-      width: 100%;  
-      max-width: 580px;  
-      background: var(--card-bg);  
-      border: 1px solid var(--border-color);  
-      border-radius: 16px;  
-      padding: 40px 36px;  
-      box-shadow: 0 20px 40px rgba(11, 19, 43, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);  
-      position: relative;  
-      overflow: hidden;  
-    }  
-  
-    .gold-bar {  
-      position: absolute;  
-      top: 0;  
-      left: 0;  
-      right: 0;  
-      height: 4px;  
-      background: linear-gradient(90deg, var(--navy-deep) 0%, var(--gold-primary) 50%, var(--navy-deep) 100%);  
-    }  
-  
-    .header {  
-      text-align: center;  
-      margin-bottom: 32px;  
-    }  
-  
-    .badge {  
-      display: inline-block;  
-      padding: 5px 14px;  
-      font-size: 0.72rem;  
-      font-weight: 700;  
-      letter-spacing: 2px;  
-      text-transform: uppercase;  
-      border-radius: 30px;  
-      background: var(--gold-light);  
-      color: var(--gold-hover);  
-      border: 1px solid rgba(197, 160, 89, 0.3);  
-      margin-bottom: 12px;  
-    }  
-  
-    .header h1 {  
-      font-family: 'Cinzel', serif;  
-      font-size: 2.2rem;  
-      font-weight: 700;  
-      color: var(--navy-deep);  
-      letter-spacing: -0.5px;  
-      margin-bottom: 6px;  
-    }  
-  
-    .header p {  
-      font-size: 0.92rem;  
-      color: var(--text-muted);  
-      line-height: 1.5;  
-    }  
-  
-    .form-group {  
-      margin-bottom: 22px;  
-    }  
-  
-    label {  
-      display: block;  
-      font-size: 0.8rem;  
-      font-weight: 700;  
-      color: var(--navy-main);  
-      margin-bottom: 8px;  
-      text-transform: uppercase;  
-      letter-spacing: 0.8px;  
-    }  
-  
-    input[type="text"], textarea {  
-      width: 100%;  
-      background: var(--input-bg);  
-      border: 1px solid var(--border-color);  
-      border-radius: 10px;  
-      padding: 14px 16px;  
-      color: var(--text-main);  
-      font-size: 0.95rem;  
-      outline: none;  
-      transition: all 0.25s ease;  
-    }  
-  
-    input[type="text"]:focus, textarea:focus {  
-      border-color: var(--gold-primary);  
-      background: #FFFFFF;  
-      box-shadow: 0 0 0 3px rgba(197, 160, 89, 0.18);  
-    }  
-  
-    textarea {  
-      resize: vertical;  
-      min-height: 120px;  
-    }  
-  
-    .file-dropzone {  
-      border: 2px dashed var(--border-color);  
-      background: var(--input-bg);  
-      border-radius: 10px;  
-      padding: 24px;  
-      text-align: center;  
-      cursor: pointer;  
-      transition: all 0.25s ease;  
-    }  
-  
-    .file-dropzone:hover {  
-      border-color: var(--gold-primary);  
-      background: rgba(197, 160, 89, 0.04);  
-    }  
-  
-    #fileLabel {  
-      font-size: 0.9rem;  
-      font-weight: 600;  
-      color: var(--text-muted);  
-    }  
+  <style>
+    :root {
+      /* Lok Press Color Palette */
+      --navy-deep: #0B132B;
+      --navy-main: #1C2D42;
+      --gold-primary: #C5A059;
+      --gold-hover: #B08A42;
+      --gold-light: rgba(197, 160, 89, 0.15);
+      --cream-bg: #F9F8F3;
+      --card-bg: #FFFFFF;
+      --input-bg: #FAF9F6;
+      --border-color: #E2DFD8;
+      --text-main: #1A202C;
+      --text-muted: #64748B;
+    }
 
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--cream-bg);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+      /* Dhubri Brahmaputra Sunset Landscape Background */
+      background-image: 
+        linear-gradient(135deg, rgba(249, 248, 243, 0.92) 0%, rgba(245, 242, 235, 0.88) 100%),
+        url('https://images.unsplash.com/photo-1544644181-1484b3fdfc62?auto=format&fit=crop&w=1920&q=80');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+    }
+
+    /* Container Card */
+    .container {
+      width: 100%;
+      max-width: 580px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 40px 36px;
+      box-shadow: 0 20px 40px rgba(11, 19, 43, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Gold Accent Top Bar */
+    .gold-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--navy-deep) 0%, var(--gold-primary) 50%, var(--navy-deep) 100%);
+    }
+
+    /* Header Styling */
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 5px 14px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      border-radius: 30px;
+      background: var(--gold-light);
+      color: var(--gold-hover);
+      border: 1px solid rgba(197, 160, 89, 0.3);
+      margin-bottom: 12px;
+    }
+
+    .header h1 {
+      font-family: 'Cinzel', serif;
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: var(--navy-deep);
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+
+    .header p {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Form Elements */
+    .form-group {
+      margin-bottom: 22px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--navy-main);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    input[type="text"], textarea {
+      width: 100%;
+      background: var(--input-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 14px 16px;
+      color: var(--text-main);
+      font-size: 0.95rem;
+      outline: none;
+      transition: all 0.25s ease;
+    }
+
+    input[type="text"]:focus, textarea:focus {
+      border-color: var(--gold-primary);
+      background: #FFFFFF;
+      box-shadow: 0 0 0 3px rgba(197, 160, 89, 0.18);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 120px;
+    }
+
+    /* Custom File Dropzone */
+    .file-dropzone {
+      border: 2px dashed var(--border-color);
+      background: var(--input-bg);
+      border-radius: 10px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+
+    .file-dropzone:hover {
+      border-color: var(--gold-primary);
+      background: rgba(197, 160, 89, 0.04);
+    }
+
+    #fileLabel {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    /* Turnstile Wrapper */
     .turnstile-container {
       display: flex;
       justify-content: center;
       margin-bottom: 18px;
-    }  
-  
-    .submit-btn {  
-      width: 100%;  
-      padding: 16px;  
-      border: none;  
-      border-radius: 10px;  
-      background: var(--navy-deep);  
-      color: #FFFFFF;  
-      font-size: 1rem;  
-      font-weight: 700;  
-      letter-spacing: 0.5px;  
-      cursor: pointer;  
-      transition: all 0.25s ease;  
-      margin-top: 8px;  
-      box-shadow: 0 4px 12px rgba(11, 19, 43, 0.15);  
-      border: 1px solid var(--navy-main);  
-    }  
-  
-    .submit-btn:hover {  
-      background: #132247;  
-      border-color: var(--gold-primary);  
-      box-shadow: 0 6px 18px rgba(11, 19, 43, 0.25);  
-      transform: translateY(-1px);  
-    }  
-  
-    .status-msg {  
-      margin-top: 18px;  
-      padding: 14px;  
-      border-radius: 8px;  
-      font-size: 0.88rem;  
-      text-align: center;  
-      display: none;  
-      font-weight: 500;  
-    }  
-
-    .thank-you-box {
-      text-align: center;
-      padding: 30px 10px;
-      display: none;
     }
 
-    .thank-you-box h2 {
-      font-family: 'Cinzel', serif;
-      font-size: 1.8rem;
-      color: var(--navy-deep);
-      margin-bottom: 12px;
-    }
-
-    .thank-you-box p {
-      font-size: 0.95rem;
-      color: var(--text-muted);
-      line-height: 1.6;
-      margin-bottom: 24px;
-    }
-
-    .secondary-btn {
-      background: transparent;
-      border: 1px solid var(--gold-primary);
-      color: var(--gold-hover);
-      padding: 12px 24px;
-      border-radius: 8px;
+    /* Navy & Gold Submit Button */
+    .submit-btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 10px;
+      background: var(--navy-deep);
+      color: #FFFFFF;
+      font-size: 1rem;
       font-weight: 700;
-      font-size: 0.88rem;
+      letter-spacing: 0.5px;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.25s ease;
+      margin-top: 8px;
+      box-shadow: 0 4px 12px rgba(11, 19, 43, 0.15);
+      border: 1px solid var(--navy-main);
     }
 
-    .secondary-btn:hover {
-      background: var(--gold-light);
-    }  
-  
-    .footer {  
-      text-align: center;  
-      margin-top: 24px;  
-      font-size: 0.78rem;  
-      color: var(--text-muted);  
-    }  
-  
-    .footer span {  
-      color: var(--gold-hover);  
-      font-weight: 600;  
-    }  
-  </style>  
-</head>  
-<body>    
+    .submit-btn:hover {
+      background: #132247;
+      border-color: var(--gold-primary);
+      box-shadow: 0 6px 18px rgba(11, 19, 43, 0.25);
+      transform: translateY(-1px);
+    }
 
-  <div class="container">  
-    <div class="gold-bar"></div>  
-    
-    <div class="header">  
-      <span class="badge">Lok Lens Portal</span>  
-      <h1>Lok Press</h1>  
-      <p>Independent ground reporting for Dhubri & Western Assam</p>  
-    </div>  
+    .submit-btn:active {
+      transform: translateY(0);
+    }
 
-    <!-- FORM SECTION -->
-    <div id="reportForm">
-      <!-- LOCATION INPUT -->  
-      <div class="form-group">  
-        <label for="location">Location (Max 50 Words)</label>  
-        <input type="text" id="location" placeholder="e.g., Dhubri, Assam" />  
-      </div>  
+    /* Alert Message Box */
+    .status-msg {
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      text-align: center;
+      display: none;
+      font-weight: 500;
+    }
 
-      <!-- CONTRIBUTOR NAME INPUT -->  
-      <div class="form-group">  
-        <label for="contributor">Contributor Name (Max 50 Words)</label>  
-        <input type="text" id="contributor" placeholder="Your Name (blank for Anonymous)" />  
-      </div>  
+    /* Footer Branding */
+    .footer {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
 
-      <!-- EVENT DETAIL INPUT -->  
-      <div class="form-group">  
-        <label for="event_detail">Incident / Event Details (Max 500 Words)</label>  
-        <textarea id="event_detail" placeholder="Describe what happened, key facts, or context..."></textarea>  
-      </div>  
+    .footer span {
+      color: var(--gold-hover);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
 
-      <!-- MEDIA FILE UPLOAD DROPZONE -->  
-      <div class="form-group" id="fileGroup">  
-        <label for="media_file">Upload Raw Evidence (Video or Photo)</label>  
-        <div class="file-dropzone" onclick="document.getElementById('media_file').click()">  
-          <span id="fileLabel">📷 Click or Drag & Drop File Here</span>  
-          <input type="file" id="media_file" accept="video/*,image/*" style="display: none;" onchange="updateFileName(this)" />  
-        </div>  
-      </div>  
+  <div class="container">
+    <div class="gold-bar"></div>
 
-      <!-- CLOUDFLARE TURNSTILE WIDGET -->
-      <div class="turnstile-container">
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFYVLVGtJqnutPKq"></div>
+    <div class="header">
+      <span class="badge">Lok Lens Portal</span>
+      <h1>Lok Press</h1>
+      <p>Independent ground reporting for Dhubri & Western Assam</p>
+    </div>
+
+    <!-- LOCATION INPUT -->
+    <div class="form-group">
+      <label for="location">Location</label>
+      <input type="text" id="location" placeholder="e.g., Dhubri, Assam" maxlength="150" />
+    </div>
+
+    <!-- CONTRIBUTOR NAME INPUT -->
+    <div class="form-group">
+      <label for="contributor">Contributor Name</label>
+      <input type="text" id="contributor" placeholder="Your Name (blank for Anonymous)" maxlength="100" />
+    </div>
+
+    <!-- EVENT DETAIL INPUT -->
+    <div class="form-group">
+      <label for="event_detail">Incident / Event Details</label>
+      <textarea id="event_detail" placeholder="Describe what happened, key facts, or context..." maxlength="5000"></textarea>
+    </div>
+
+    <!-- MEDIA FILE UPLOAD DROPZONE -->
+    <div class="form-group" id="fileGroup">
+      <label for="media_file">Upload Raw Evidence (Video or Photo)</label>
+      <div class="file-dropzone" onclick="document.getElementById('media_file').click()">
+        <span id="fileLabel">📷 Click or Drag & Drop File Here</span>
+        <input type="file" id="media_file" accept="video/*,image/*" style="display: none;" onchange="updateFileName(this)" />
       </div>
-
-      <button class="submit-btn" id="submitBtn" onclick="submitForm()">Submit Ground Report</button>  
     </div>
 
-    <!-- SUCCESS / THANK YOU STATE -->
-    <div id="thankYouBox" class="thank-you-box">
-      <div style="font-size: 3rem; margin-bottom: 12px;">✅</div>
-      <h2>Thanks for Reporting!</h2>
-      <p>Your ground report has been securely received and queued for the Lok Press editorial desk.</p>
-      <button class="secondary-btn" onclick="resetForm()">Submit Another Report</button>
+    <!-- CLOUDFLARE TURNSTILE WIDGET -->
+    <div class="turnstile-container">
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAAFYVLVGtJqnutPKq"></div>
     </div>
 
-    <div id="statusMsg" class="status-msg"></div>  
+    <button class="submit-btn" id="submitBtn" onclick="submitForm()">Submit Ground Report</button>
 
-    <div class="footer">  
-      Powered by <span>Lok Press © </span> • Dhubri, Assam  
-    </div>  
-  </div>    
+    <div id="statusMsg" class="status-msg"></div>
 
-  <script>  
-    // Mobile-Proof Strict Word Limit Enforcer (Stops extra words from being typed/shown)
-    function attachStrictWordLimit(fieldId, maxWords) {
-      const input = document.getElementById(fieldId);
+    <div class="footer">
+      Powered by <span>Lok Press © </span> • Dhubri, Assam
+    </div>
+  </div>
 
-      const enforceLimit = () => {
-        const text = input.value;
-        const words = text.trim() ? text.trim().split(/\s+/) : [];
-
-        if (words.length > maxWords) {
-          // Truncate to exact max words so excess text doesn't show on form
-          input.value = words.slice(0, maxWords).join(' ');
-        }
-      };
-
-      // Intercept before input on mobile keyboards to physically block typing past limit
-      input.addEventListener('beforeinput', (e) => {
-        const currentWords = input.value.trim() ? input.value.trim().split(/\s+/) : [];
-        if (currentWords.length >= maxWords && (e.data === ' ' || e.inputType === 'insertLineBreak' || e.inputType === 'insertText')) {
-          // If inserting a space or text when limit is hit, check if it exceeds
-          setTimeout(enforceLimit, 1);
-        }
-      });
-
-      input.addEventListener('input', enforceLimit);
-      input.addEventListener('keyup', enforceLimit);
-      input.addEventListener('paste', () => setTimeout(enforceLimit, 10));
+  <script>
+    function updateFileName(input) {
+      const label = document.getElementById("fileLabel");
+      if (input.files && input.files[0]) {
+        label.innerText = "🎥 Selected: " + input.files[0].name;
+        label.style.color = "var(--gold-hover)";
+      } else {
+        label.innerText = "📷 Click or Drag & Drop File Here";
+        label.style.color = "var(--text-muted)";
+      }
     }
 
-    // Attach strict limits
-    attachStrictWordLimit("location", 50);
-    attachStrictWordLimit("contributor", 50);
-    attachStrictWordLimit("event_detail", 500);
+    async function submitForm() {
+      const location = document.getElementById("location").value.trim();
+      let contributor = document.getElementById("contributor").value.trim();
+      const eventDetail = document.getElementById("event_detail").value.trim();
+      const btn = document.getElementById("submitBtn");
 
-    function updateFileName(input) {  
-      const label = document.getElementById("fileLabel");  
-      if (input.files && input.files[0]) {  
-        label.innerText = "🎥 Selected: " + input.files[0].name;  
-        label.style.color = "var(--gold-hover)";  
-      } else {  
-        label.innerText = "📷 Click or Drag & Drop File Here";  
-        label.style.color = "var(--text-muted)";  
-      }  
-    }  
+      // Extract Cloudflare Turnstile Response Token
+      const turnstileResponse = document.querySelector('[name="cf-turnstile-response"]')?.value;
 
-    async function submitForm() {  
-      const locationInput = document.getElementById("location");
-      const contributorInput = document.getElementById("contributor");
-      const eventDetailInput = document.getElementById("event_detail");
-
-      const location = locationInput.value.trim();  
-      let contributor = contributorInput.value.trim();  
-      const eventDetail = eventDetailInput.value.trim();  
-      const btn = document.getElementById("submitBtn");  
-
-      const turnstileResponse = document.querySelector('[name="cf-turnstile-response"]')?.value;  
-
-      if (!eventDetail) {  
-        showStatus("Please write the event details before submitting.", "#D9381E");  
-        return;  
-      }  
-
-      if (!turnstileResponse) {  
-        showStatus("Please complete the bot security check.", "#D9381E");  
-        return;  
-      }  
-
-      if (!contributor) {  
-        contributor = "Anonymous";  
-      }  
-
-      btn.innerText = "Processing...";  
-      btn.disabled = true;  
-
-      let gdriveFileIds = [];  
-
-      try {  
-        const fileInput = document.getElementById("media_file");  
-        const file = fileInput.files[0];  
-
-        if (file) {  
-          btn.innerText = "Preparing secure upload...";  
-
-          const urlRes = await fetch('/api/get-upload-url', {  
-            method: 'POST',  
-            headers: { 'Content-Type': 'application/json' },  
-            body: JSON.stringify({ fileName: file.name, fileType: file.type })  
-          });  
-
-          const urlData = await urlRes.json();  
-          if (!urlRes.ok) throw new Error(urlData.error || "Failed to generate upload URL.");  
-
-          btn.innerText = "Uploading media directly to secure storage...";  
-
-          const uploadRes = await fetch(urlData.uploadUrl, {  
-            method: 'PUT',  
-            headers: { 'Content-Type': file.type || 'application/octet-stream' },  
-            body: file  
-          });  
-
-          if (!uploadRes.ok) throw new Error("Failed to upload media file.");  
-
-          const driveFile = await uploadRes.json();  
-
-          if (driveFile.id) {  
-            gdriveFileIds.push(driveFile.id);  
-          }  
-        }  
-
-        btn.innerText = "Queueing report...";  
-
-        const response = await fetch('/api/submit', {  
-          method: 'POST',  
-          headers: { 'Content-Type': 'application/json' },  
-          body: JSON.stringify({  
-            location: location || "Unspecified",  
-            contributor_name: contributor,  
-            event_detail: eventDetail,  
-            gdrive_file_ids: gdriveFileIds,  
-            turnstile_token: turnstileResponse  
-          })  
-        });  
-
-        const contentType = response.headers.get("content-type");  
-        let result;  
-        if (contentType && contentType.includes("application/json")) {  
-          result = await response.json();  
-        } else {  
-          const rawText = await response.text();  
-          throw new Error(`Server Error (${response.status}): ${rawText.slice(0, 80)}... Check Vercel logs.`);  
-        }  
-
-        if (!response.ok) throw new Error(result.error || "Submission failed");  
-
-        // SWAP FORM WITH THANK YOU MESSAGE
-        document.getElementById("reportForm").style.display = "none";
-        document.getElementById("thankYouBox").style.display = "block";
-        document.getElementById("statusMsg").style.display = "none";
-
-      } catch (err) {  
-        console.error(err);  
-        showStatus("❌ " + err.message, "#D9381E");  
-        if (window.turnstile) {  
-          turnstile.reset();  
-        }  
-      } finally {  
-        btn.innerText = "Submit Ground Report";  
-        btn.disabled = false;  
-      }  
-    }  
-
-    function resetForm() {
-      document.getElementById("location").value = "";  
-      document.getElementById("contributor").value = "";  
-      document.getElementById("event_detail").value = "";  
-      if (document.getElementById("media_file")) {  
-          document.getElementById("media_file").value = "";  
-          updateFileName(document.getElementById("media_file"));  
-      }  
-      if (window.turnstile) {  
-        turnstile.reset();  
+      if (!eventDetail) {
+        showStatus("Please write the event details before submitting.", "#D9381E");
+        return;
       }
 
-      document.getElementById("thankYouBox").style.display = "none";
-      document.getElementById("reportForm").style.display = "block";
+      if (!turnstileResponse) {
+        showStatus("Please complete the bot security check.", "#D9381E");
+        return;
+      }
+
+      // Fallback to "Anonymous" if contributor field is empty
+      if (!contributor) {
+        contributor = "Anonymous";
+      }
+
+      btn.innerText = "Processing...";
+      btn.disabled = true;
+
+      let gdriveFileIds = [];
+
+      try {
+        const fileInput = document.getElementById("media_file");
+        const file = fileInput.files[0];
+
+        // STEP 1: Handle Direct Resumable Upload to Google Drive if media is present
+        if (file) {
+          btn.innerText = "Preparing secure upload...";
+
+          const urlRes = await fetch('/api/get-upload-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName: file.name, fileType: file.type })
+          });
+
+          const urlData = await urlRes.json();
+          if (!urlRes.ok) throw new Error(urlData.error || "Failed to generate upload URL.");
+
+          btn.innerText = "Uploading media directly to secure storage...";
+
+          const uploadRes = await fetch(urlData.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            body: file
+          });
+
+          if (!uploadRes.ok) throw new Error("Failed to upload media file.");
+
+          const driveFile = await uploadRes.json();
+
+          if (driveFile.id) {
+            gdriveFileIds.push(driveFile.id);
+          }
+        }
+
+        btn.innerText = "Queueing report...";
+
+        // STEP 2: Submit structured payload + Turnstile token to API
+        const response = await fetch('/api/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: location || "Unspecified",
+            contributor_name: contributor,
+            event_detail: eventDetail,
+            gdrive_file_ids: gdriveFileIds,
+            turnstile_token: turnstileResponse
+          })
+        });
+
+        const contentType = response.headers.get("content-type");
+        let result;
+        if (contentType && contentType.includes("application/json")) {
+          result = await response.json();
+        } else {
+          const rawText = await response.text();
+          throw new Error(`Server Error (${response.status}): ${rawText.slice(0, 80)}... Check Vercel logs.`);
+        }
+
+        if (!response.ok) throw new Error(result.error || "Submission failed");
+
+        showStatus("✅ Ground report queued successfully for Lok Press processing!", "#15803D");
+          
+        // Reset form inputs & Turnstile widget
+        document.getElementById("location").value = "";
+        document.getElementById("contributor").value = "";
+        document.getElementById("event_detail").value = "";
+        if (document.getElementById("media_file")) {
+            document.getElementById("media_file").value = "";
+            updateFileName(document.getElementById("media_file"));
+        }
+        
+        if (window.turnstile) {
+          turnstile.reset();
+        }
+
+      } catch (err) {
+        console.error(err);
+        showStatus("❌ " + err.message, "#D9381E");
+        if (window.turnstile) {
+          turnstile.reset();
+        }
+      } finally {
+        btn.innerText = "Submit Ground Report";
+        btn.disabled = false;
+      }
     }
 
-    function showStatus(text, color) {  
-      const statusMsg = document.getElementById("statusMsg");  
-      statusMsg.style.display = "block";  
-      statusMsg.style.background = color + "12";  
-      statusMsg.style.color = color;  
-      statusMsg.style.border = `1px solid ${color}40`;  
-      statusMsg.innerText = text;  
-    }  
-  </script>  
-</body>  
+    function showStatus(text, color) {
+      const statusMsg = document.getElementById("statusMsg");
+      statusMsg.style.display = "block";
+      statusMsg.style.background = color + "12";
+      statusMsg.style.color = color;
+      statusMsg.style.border = `1px solid ${color}40`;
+      statusMsg.innerText = text;
+    }
+  </script>
+</body>
 </html>
