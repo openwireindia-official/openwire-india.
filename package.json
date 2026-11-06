@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "googleapis": "^140.0.0",
-    "@supabase/supabase-js": "^2.39.0",
-    "@upstash/ratelimit": "^1.0.0",
-    "@upstash/redis": "^1.0.0"
+    "googleapis": "189.0.0",
+    "@supabase/supabase-js": "2.39.0",
+    "@upstash/ratelimit": "1.0.0",
+    "@upstash/redis": "1.0.0"
   }
 }
 
