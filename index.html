@@ -404,20 +404,24 @@
       btn.innerText = "Processing...";  
       btn.disabled = true;  
 
-      let gdriveFileIds = [];  
+      let uploadTokens = [];
+      let gdriveFileId = null;
 
       try {  
         const fileInput = document.getElementById("media_file");  
         const file = fileInput.files[0];  
 
-        if (file) {  
-          btn.innerText = "Preparing secure upload...";  
+        if (file) {
+          const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm']);
+          if (!allowedTypes.has(file.type)) throw new Error('Unsupported media type.');
+          if (file.size < 1 || file.size > 50 * 1024 * 1024) throw new Error('Media must be between 1 byte and 50 MB.');
+          btn.innerText = "Preparing secure upload...";
 
-          const urlRes = await fetch('/api/get-upload-url', {  
-            method: 'POST',  
-            headers: { 'Content-Type': 'application/json' },  
-            body: JSON.stringify({ fileName: file.name, fileType: file.type })  
-          });  
+          const urlRes = await fetch('/api/get-upload-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName: file.name, fileType: file.type, fileSize: file.size, turnstileToken: turnstileResponse })
+          });
 
           const urlData = await urlRes.json();  
           if (!urlRes.ok) throw new Error(urlData.error || "Failed to generate upload URL.");  
@@ -434,9 +438,10 @@
 
           const driveFile = await uploadRes.json();  
 
-          if (driveFile.id) {  
-            gdriveFileIds.push(driveFile.id);  
-          }  
+          if (driveFile.id) {
+            gdriveFileId = driveFile.id;
+            uploadTokens.push(urlData.uploadToken);
+          }
         }  
 
         btn.innerText = "Queueing report...";  
@@ -448,8 +453,9 @@
             location: location || "Unspecified",  
             contributor_name: contributor,  
             event_detail: eventDetail,  
-            gdrive_file_ids: gdriveFileIds,  
-            turnstile_token: turnstileResponse  
+            gdrive_file_id: gdriveFileId,
+            upload_tokens: uploadTokens,
+            turnstile_token: turnstileResponse
           })  
         });  
 
