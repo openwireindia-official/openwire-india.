@@ -1,8 +1,0 @@
-.env
-.env.*
-node_modules/
-output/
-__pycache__/
-*.pyc
-*.log
-.vercel/
